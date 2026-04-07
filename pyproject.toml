@@ -1,10 +1,10 @@
 [project]
 name = "odup"
-version = "0.1.0"
+version = "1.0.0"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    { name = "Cyril Moreau (cymo)", email = "cymo@odoo.com" } 
+    { name = "Cyril Moreau (cymo)", email = "cymo@odoo.com" }
 ]
 description = "CLI helpers for experimenting with Odoo upgrades locally."
 readme = {file = "README.md", content-type = "text/markdown"}
