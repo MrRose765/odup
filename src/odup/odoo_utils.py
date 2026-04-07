@@ -4,13 +4,14 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Optional
+
 import psycopg2
 from psycopg2 import sql
 
-
-class OdooEnvironmentError(Exception):
-    """Raised when Odoo environment cannot be found or is invalid."""
-    pass
+from .error import DatabaseOperationError
+from .error import OdooCommandError
+from .error import OdooEnvironmentError
+from .error import VersionDetectionError
 
 
 def _read_master_floor_from_release() -> tuple[int, int]:
@@ -19,11 +20,13 @@ def _read_master_floor_from_release() -> tuple[int, int]:
     try:
         content = release_py.read_text(encoding="utf-8")
     except OSError:
-        raise OdooEnvironmentError(f"Could not read release.py to determine master floor version. Expected at {release_py}")
+        raise VersionDetectionError(
+            f"Could not read release.py to determine master floor version. Expected at {release_py}"
+        )
 
     match = re.search(r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,", content)
     if not match:
-        raise OdooEnvironmentError(f"Could not find version_info in release.py. Expected at {release_py}")
+        raise VersionDetectionError(f"Could not find version_info in release.py. Expected at {release_py}")
 
     return int(match.group(1)), int(match.group(2))
 
@@ -39,43 +42,50 @@ def _query_version(cursor):
 def drop_if_exists(dbname: str) -> None:
     """Drop the specified database if it exists."""
     conn = None
+    curr = None
     try:
         conn = psycopg2.connect(
             dbname='postgres',
             user='odoo',
         )
         conn.autocommit = True
-        cur = conn.cursor()
+        curr = conn.cursor()
 
-        cur.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(dbname)))
-        print(f"Successfully dropped database: {dbname}")
-
-    except Exception as e:
-        print(f"Error: Could not drop database {dbname}. {e}")
-    
+        curr.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(dbname)))
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(f"Could not drop database '{dbname}': {exc}") from exc
     finally:
+        if curr:
+            curr.close()
         if conn:
-            cur.close()
             conn.close()
 
 
-def infer_version(db_name: str) -> Optional[str]:
+def infer_version(db_name: str) -> str:
     """
     Infer the Odoo version of an existing database by connecting to it and querying the base module version.
     """
     conn = None
+    curr = None
     try:
         conn = psycopg2.connect(
             dbname=db_name,
             user='odoo',
         )
-        cur = conn.cursor()
-        version = _query_version(cur)
-        return parse_version(version) if version else None
+        curr = conn.cursor()
+        version = _query_version(curr)
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(f"Could not query database '{db_name}' for Odoo version: {exc}") from exc
     finally:
+        if curr:
+            curr.close()
         if conn:
-            cur.close()
             conn.close()
+
+    if not version:
+        raise VersionDetectionError(f"Database '{db_name}' did not return a base module version.")
+
+    return parse_version(version)
 
 
 def parse_version(version_str: str) -> str:
@@ -86,7 +96,7 @@ def parse_version(version_str: str) -> str:
     :param version_str: The version string (from DB or input)
     """
     if not version_str:
-        return "master"
+        raise VersionDetectionError("Received an empty Odoo version string.")
 
     master_major, master_minor = _read_master_floor_from_release()
     v = version_str.strip().lower().replace('~', '.').replace('-', '.')
@@ -96,7 +106,7 @@ def parse_version(version_str: str) -> str:
 
     match_digits = re.findall(r'(\d+)', v)
     if not match_digits:
-        raise ValueError(f"Could not parse version from string: {version_str}")
+        raise VersionDetectionError(f"Could not parse version from string: {version_str}")
 
     major = int(match_digits[0])
     minor = int(match_digits[1]) if len(match_digits) > 1 else 0
@@ -152,5 +162,5 @@ def run_odoo_command(venv_path: Path, odoo_bin: Path, args: list[str], addons_pa
     try:
         result = subprocess.run(cmd, check=False)
         return result.returncode
-    except Exception as e:
-        raise OdooEnvironmentError(f"Failed to run odoo-bin: {e}") from e
+    except OSError as exc:
+        raise OdooCommandError(f"Failed to run odoo-bin: {exc}") from exc

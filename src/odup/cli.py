@@ -4,7 +4,7 @@ from typing import Optional
 
 import typer
 
-from .odoo_utils import OdooEnvironmentError
+from .error import OdupError
 from .odoo_utils import find_odoo_environment 
 from .odoo_utils import parse_version 
 from .odoo_utils import infer_version
@@ -12,6 +12,15 @@ from .odoo_utils import run_odoo_command
 from .odoo_utils import drop_if_exists
 
 app = typer.Typer(help="Local helpers for prototyping Odoo upgrade workflows.")
+
+
+def _handle_error(exc: Exception) -> None:
+    """Convert domain exceptions to consistent CLI output and exit code."""
+    if isinstance(exc, OdupError):
+        typer.echo(f"[odup] Error: {exc}", err=True)
+    else:
+        typer.echo(f"[odup] Unexpected error: {exc}", err=True)
+    raise typer.Exit(1)
 
 
 @app.command()
@@ -31,18 +40,16 @@ def createdb(
     ),
 ) -> None:
     """Create a fresh Odoo database for the requested version."""
-    db_name = f"odup_{db_name}"
-    typer.echo(f"[odup] Creating Odoo database '{db_name}' for version {version}")
-    
-    drop_if_exists(db_name)
-
-    version = parse_version(version)
-
     try:
+        db_name = f"odup_{db_name}"
+        typer.echo(f"[odup] Creating Odoo database '{db_name}' for version {version}")
+
+        drop_if_exists(db_name)
+        version = parse_version(version)
+
         venv_path, odoo_bin, addons_path = find_odoo_environment(version)
-    except OdooEnvironmentError as e:
-        typer.echo(f"[odup] Error: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        _handle_error(exc)
     
     typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
     typer.echo(f"[odup] Using virtual environment: {venv_path}")
@@ -61,9 +68,8 @@ def createdb(
     
     try:
         exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
-    except OdooEnvironmentError as e:
-        typer.echo(f"[odup] Error: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        _handle_error(exc)
     
     if exit_code == 0:
         typer.echo(f"[odup] Successfully created Odoo database '{db_name}'")
@@ -101,9 +107,8 @@ def start(
     try:
         version = infer_version(db_name)
         venv_path, odoo_bin, addons_path = find_odoo_environment(version)
-    except OdooEnvironmentError as e:
-        typer.echo(f"[odup] Error: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        _handle_error(exc)
 
     typer.echo(f"[odup] Inferred Odoo version: {version}")
     typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
@@ -118,9 +123,8 @@ def start(
 
     try:
         exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
-    except OdooEnvironmentError as e:
-        typer.echo(f"[odup] Error: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        _handle_error(exc)
 
     if exit_code != 0:
         raise typer.Exit(exit_code)
