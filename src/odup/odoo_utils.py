@@ -26,7 +26,9 @@ def _read_master_floor_from_release() -> tuple[int, int]:
 
     match = re.search(r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,", content)
     if not match:
-        raise VersionDetectionError(f"Could not find version_info in release.py. Expected at {release_py}")
+        raise VersionDetectionError(
+            f"Could not find version_info in release.py. Expected at {release_py}"
+        )
 
     return int(match.group(1)), int(match.group(2))
 
@@ -45,15 +47,47 @@ def drop_if_exists(dbname: str) -> None:
     curr = None
     try:
         conn = psycopg2.connect(
-            dbname='postgres',
-            user='odoo',
+            dbname="postgres",
+            user="odoo",
         )
         conn.autocommit = True
         curr = conn.cursor()
 
-        curr.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(dbname)))
+        curr.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(dbname))
+        )
     except psycopg2.Error as exc:
-        raise DatabaseOperationError(f"Could not drop database '{dbname}': {exc}") from exc
+        raise DatabaseOperationError(
+            f"Could not drop database '{dbname}': {exc}"
+        ) from exc
+    finally:
+        if curr:
+            curr.close()
+        if conn:
+            conn.close()
+
+
+def clone_database_from_template(dbname: str, template_db: str) -> None:
+    """Create a database from a template database."""
+    conn = None
+    curr = None
+    try:
+        conn = psycopg2.connect(
+            dbname="postgres",
+            user="odoo",
+        )
+        conn.autocommit = True
+        curr = conn.cursor()
+        curr.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(dbname),
+                sql.Identifier(template_db),
+            )
+        )
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(
+            f"Could not clone database '{template_db}' to '{dbname}': {exc}"
+        ) from exc
     finally:
         if curr:
             curr.close()
@@ -70,12 +104,14 @@ def infer_version(db_name: str) -> str:
     try:
         conn = psycopg2.connect(
             dbname=db_name,
-            user='odoo',
+            user="odoo",
         )
         curr = conn.cursor()
         version = _query_version(curr)
     except psycopg2.Error as exc:
-        raise DatabaseOperationError(f"Could not query database '{db_name}' for Odoo version: {exc}") from exc
+        raise DatabaseOperationError(
+            f"Could not query database '{db_name}' for Odoo version: {exc}"
+        ) from exc
     finally:
         if curr:
             curr.close()
@@ -83,7 +119,9 @@ def infer_version(db_name: str) -> str:
             conn.close()
 
     if not version:
-        raise VersionDetectionError(f"Database '{db_name}' did not return a base module version.")
+        raise VersionDetectionError(
+            f"Database '{db_name}' did not return a base module version."
+        )
 
     return parse_version(version)
 
@@ -92,21 +130,23 @@ def parse_version(version_str: str) -> str:
     """
     Normalizes Odoo version strings
     To find the master floor version, it reads the version_info from the master release.py file.
-    
+
     :param version_str: The version string (from DB or input)
     """
     if not version_str:
         raise VersionDetectionError("Received an empty Odoo version string.")
 
     master_major, master_minor = _read_master_floor_from_release()
-    v = version_str.strip().lower().replace('~', '.').replace('-', '.')
-    
+    v = version_str.strip().lower().replace("~", ".").replace("-", ".")
+
     if "master" in v:
         return "master"
 
-    match_digits = re.findall(r'(\d+)', v)
+    match_digits = re.findall(r"(\d+)", v)
     if not match_digits:
-        raise VersionDetectionError(f"Could not parse version from string: {version_str}")
+        raise VersionDetectionError(
+            f"Could not parse version from string: {version_str}"
+        )
 
     major = int(match_digits[0])
     minor = int(match_digits[1]) if len(match_digits) > 1 else 0
@@ -122,24 +162,24 @@ def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     """Find the correct venv, odoo-bin, and addon paths for the given version."""
     home = Path.home()
     odoo_base = home / "src" / "odoo" / version
-    
+
     if not odoo_base.exists():
         raise OdooEnvironmentError(f"Odoo version {version} not found at {odoo_base}")
-    
+
     venv_path = odoo_base / ".venv"
     if not venv_path.exists() or not (venv_path / "bin" / "python").exists():
         raise OdooEnvironmentError(f"Virtual environment not found at {venv_path}")
-    
+
     odoo_bin = odoo_base / "odoo-bin"
     if not odoo_bin.exists():
         raise OdooEnvironmentError(f"odoo-bin not found at {odoo_bin}")
-    
+
     addon_paths = []
 
     odoo_addons = odoo_base / "addons"
     if odoo_addons.exists():
         addon_paths.append(str(odoo_addons))
-    
+
     # Enterprise addons are optional but commonly used
     enterprise_base = home / "src" / "enterprise" / version
     if enterprise_base.exists():
@@ -149,16 +189,18 @@ def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     return venv_path, odoo_bin, addons_path
 
 
-def run_odoo_command(venv_path: Path, odoo_bin: Path, args: list[str], addons_path: Optional[str] = None) -> int:
+def run_odoo_command(
+    venv_path: Path, odoo_bin: Path, args: list[str], addons_path: Optional[str] = None
+) -> int:
     """Run an odoo-bin command with the appropriate Python environment and addon paths."""
     python_exe = venv_path / "bin" / "python"
     cmd = [str(python_exe), str(odoo_bin)]
-    
+
     if addons_path:
         cmd.extend(["--addons-path", addons_path])
-    
+
     cmd.extend(args)
-    
+
     try:
         result = subprocess.run(cmd, check=False)
         return result.returncode
