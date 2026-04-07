@@ -80,7 +80,7 @@ def infer_version(db_name: str) -> Optional[str]:
 
 def parse_version(version_str: str) -> str:
     """
-    Normalizes Odoo version strings.
+    Normalizes Odoo version strings
     To find the master floor version, it reads the version_info from the master release.py file.
     
     :param version_str: The version string (from DB or input)
