@@ -13,6 +13,29 @@ class OdooEnvironmentError(Exception):
     pass
 
 
+def _read_master_floor_from_release() -> tuple[int, int]:
+    release_py = Path.home() / "src" / "odoo" / "master" / "odoo" / "release.py"
+
+    try:
+        content = release_py.read_text(encoding="utf-8")
+    except OSError:
+        raise OdooEnvironmentError(f"Could not read release.py to determine master floor version. Expected at {release_py}")
+
+    match = re.search(r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,", content)
+    if not match:
+        raise OdooEnvironmentError(f"Could not find version_info in release.py. Expected at {release_py}")
+
+    return int(match.group(1)), int(match.group(2))
+
+
+def _query_version(cursor):
+    """Query Odoo version from the database using the provided cursor."""
+    query = "SELECT latest_version FROM ir_module_module WHERE name='base';"
+    cursor.execute(query)
+    res = cursor.fetchone()
+    return res[0] if res else None
+
+
 def drop_if_exists(dbname: str) -> None:
     """Drop the specified database if it exists."""
     conn = None
@@ -36,59 +59,53 @@ def drop_if_exists(dbname: str) -> None:
             conn.close()
 
 
-def infer_odoo_version(db_name: str) -> str:
-    """Infer the Odoo version from a database by inspecting the base module."""
-
-    query = "SELECT latest_version FROM ir_module_module WHERE name='base';"
-
-    try:
-        with psycopg2.connect(dbname=db_name) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(query)
-                row = cursor.fetchone()
-    except psycopg2.Error as exc:
-        message = f"Failed to query database '{db_name}' for version."
-        detail = str(exc).strip()
-        if detail:
-            message = f"{message} {detail}"
-        raise OdooEnvironmentError(message) from exc
-
-    if not row or not row[0]:
-        raise OdooEnvironmentError(f"Database '{db_name}' did not return a base module version.")
-
-    raw_version = str(row[0]).strip()
-    try:
-        return parse_odoo_version(raw_version)
-    except OdooEnvironmentError as exc:
-        raise OdooEnvironmentError(f"Failed to parse Odoo version from database '{db_name}': {exc}") from exc
-
-
-def parse_odoo_version(version: str) -> str:
+def infer_version(db_name: str) -> Optional[str]:
     """
-    Parse and normalize an Odoo version string.
-
-    Converts inputs like:
-    - "14.0" -> "14.0"
-    - "14" -> "14.0"
-    - "19.1" -> "saas-19.1"
-    - "saas~19.1.1.3" -> "saas-19.1"
-    - "19.3.1.3" -> "master"
+    Infer the Odoo version of an existing database by connecting to it and querying the base module version.
     """
-    version = version.strip().lower()
-    if version in {"master", "saas-master", "19.3.1.3"}:
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            dbname=db_name,
+            user='odoo',
+        )
+        cur = conn.cursor()
+        version = _query_version(cur)
+        return parse_version(version) if version else None
+    finally:
+        if conn:
+            cur.close()
+            conn.close()
+
+
+def parse_version(version_str: str) -> str:
+    """
+    Normalizes Odoo version strings.
+    To find the master floor version, it reads the version_info from the master release.py file.
+    
+    :param version_str: The version string (from DB or input)
+    """
+    if not version_str:
         return "master"
 
-    saas_match = re.search(r"saas[~-]?(\d+)(?:\.(\d+))?", version)
-    if saas_match:
-        major, minor = saas_match.groups()
-        return f"saas-{major}.{minor or '0'}"
+    master_major, master_minor = _read_master_floor_from_release()
+    v = version_str.strip().lower().replace('~', '.').replace('-', '.')
+    
+    if "master" in v:
+        return "master"
 
-    match = re.search(r"(\d+)(?:\.(\d+))?", version)
-    if match:
-        major, minor = match.groups()
-        return f"{major}.{minor or '0'}"
+    match_digits = re.findall(r'(\d+)', v)
+    if not match_digits:
+        raise ValueError(f"Could not parse version from string: {version_str}")
 
-    raise OdooEnvironmentError(f"Invalid Odoo version format: '{version}'.")
+    major = int(match_digits[0])
+    minor = int(match_digits[1]) if len(match_digits) > 1 else 0
+
+    if major == master_major and minor >= master_minor:
+        return "master"
+    if minor > 0:
+        return f"saas-{major}.{minor}"
+    return f"{major}.0"
 
 
 def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:

@@ -6,8 +6,8 @@ import typer
 
 from .odoo_utils import OdooEnvironmentError
 from .odoo_utils import find_odoo_environment 
-from .odoo_utils import infer_odoo_version
-from .odoo_utils import parse_odoo_version 
+from .odoo_utils import parse_version 
+from .odoo_utils import infer_version
 from .odoo_utils import run_odoo_command
 from .odoo_utils import drop_if_exists
 
@@ -36,7 +36,7 @@ def createdb(
     
     drop_if_exists(db_name)
 
-    version = parse_odoo_version(version)
+    version = parse_version(version)
 
     try:
         venv_path, odoo_bin, addons_path = find_odoo_environment(version)
@@ -99,7 +99,7 @@ def start(
     typer.echo(f"[odup] Starting Odoo database '{db_name}'")
 
     try:
-        version = infer_odoo_version(db_name)
+        version = infer_version(db_name)
         venv_path, odoo_bin, addons_path = find_odoo_environment(version)
     except OdooEnvironmentError as e:
         typer.echo(f"[odup] Error: {e}", err=True)
