@@ -4,7 +4,12 @@ from typing import Optional
 
 import typer
 
-from .odoo_utils import OdooEnvironmentError, find_odoo_environment, run_odoo_command
+from .odoo_utils import OdooEnvironmentError
+from .odoo_utils import find_odoo_environment 
+from .odoo_utils import infer_odoo_version
+from .odoo_utils import parse_odoo_version 
+from .odoo_utils import run_odoo_command
+from .odoo_utils import drop_if_exists
 
 app = typer.Typer(help="Local helpers for prototyping Odoo upgrade workflows.")
 
@@ -29,16 +34,20 @@ def createdb(
     db_name = f"odup_{db_name}"
     typer.echo(f"[odup] Creating Odoo database '{db_name}' for version {version}")
     
+    drop_if_exists(db_name)
+
+    version = parse_odoo_version(version)
+
     try:
-        venv_path, odoo_bin, addon_paths = find_odoo_environment(version)
+        venv_path, odoo_bin, addons_path = find_odoo_environment(version)
     except OdooEnvironmentError as e:
         typer.echo(f"[odup] Error: {e}", err=True)
         raise typer.Exit(1)
     
     typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
     typer.echo(f"[odup] Using virtual environment: {venv_path}")
-    if addon_paths:
-        typer.echo(f"[odup] Using addon paths: {', '.join(addon_paths)}")
+    if addons_path:
+        typer.echo(f"[odup] Using addons path: {addons_path}")
     
     args = ["-d", db_name]
     
@@ -51,7 +60,7 @@ def createdb(
     typer.echo(f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(args)}")
     
     try:
-        exit_code = run_odoo_command(venv_path, odoo_bin, args, addon_paths)
+        exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
     except OdooEnvironmentError as e:
         typer.echo(f"[odup] Error: {e}", err=True)
         raise typer.Exit(1)
@@ -75,6 +84,46 @@ def upgrade(
     """Placeholder for orchestrating the upgrade and optional test suite."""
     suffix = " with tests" if with_tests else ""
     typer.echo(f"[odup] Would upgrade database to {target_version}{suffix}.")
+
+
+@app.command()
+def start(
+    db_name: str = typer.Argument(..., help="Odoo database name to start."),
+    shell: bool = typer.Option(
+        False,
+        "--shell",
+        help="Start the database in Odoo shell mode.",
+    ),
+) -> None:
+    """Start an existing Odoo database using its inferred version."""
+    typer.echo(f"[odup] Starting Odoo database '{db_name}'")
+
+    try:
+        version = infer_odoo_version(db_name)
+        venv_path, odoo_bin, addons_path = find_odoo_environment(version)
+    except OdooEnvironmentError as e:
+        typer.echo(f"[odup] Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"[odup] Inferred Odoo version: {version}")
+    typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
+    typer.echo(f"[odup] Using virtual environment: {venv_path}")
+    if addons_path:
+        typer.echo(f"[odup] Using addons path: {addons_path}")
+
+    if shell:
+        args = ["shell", "-d", db_name]
+    else:
+        args = ["-d", db_name]
+
+    try:
+        exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
+    except OdooEnvironmentError as e:
+        typer.echo(f"[odup] Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 @app.command()

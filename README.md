@@ -23,5 +23,6 @@ The sync step creates a local `.venv` with Typer and friends pinned in `uv.lock`
 All sub-commands are placeholders for now but they exercise the CLI wiring:
 
 - `create-db VERSION` – provision a fresh database for a given Odoo release.
+- `start DBNAME [--shell]` – start a database by inferring its Odoo version (or launch shell mode).
 - `upgrade TARGET_VERSION [--tests/--no-tests]` – upgrade a database and optionally run tests.
 - `test SCENARIO` – run ad-hoc experiments.
