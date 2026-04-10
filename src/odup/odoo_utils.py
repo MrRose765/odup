@@ -204,6 +204,74 @@ def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     return venv_path, odoo_bin, addons_path
 
 
+def _ensure_odup_metadata_table(cursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS odup_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+
+
+def set_prepare_tests_marker(dbname: str, version: str) -> None:
+    conn = None
+    curr = None
+    try:
+        conn = psycopg2.connect(
+            dbname=dbname,
+            user="odoo",
+        )
+        conn.autocommit = True
+        curr = conn.cursor()
+        _ensure_odup_metadata_table(curr)
+        curr.execute(
+            """
+            INSERT INTO odup_metadata (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """,
+            ("upgrade.test_prepare", version),
+        )
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(
+            f"Could not set prepare-tests marker on database '{dbname}': {exc}"
+        ) from exc
+    finally:
+        if curr:
+            curr.close()
+        if conn:
+            conn.close()
+
+
+def has_prepare_tests_marker(dbname: str) -> bool:
+    conn = None
+    curr = None
+    try:
+        conn = psycopg2.connect(
+            dbname=dbname,
+            user="odoo",
+        )
+        curr = conn.cursor()
+        _ensure_odup_metadata_table(curr)
+        curr.execute(
+            "SELECT 1 FROM odup_metadata WHERE key = %s", ("upgrade.test_prepare",)
+        )
+        return curr.fetchone() is not None
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(
+            f"Could not read prepare-tests marker from database '{dbname}': {exc}"
+        ) from exc
+    finally:
+        if curr:
+            curr.close()
+        if conn:
+            conn.close()
+
+
 def run_odoo_command(
     venv_path: Path, odoo_bin: Path, args: list[str], addons_path: Optional[str] = None
 ) -> int:
