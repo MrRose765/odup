@@ -158,6 +158,18 @@ def parse_version(version_str: str) -> str:
     return f"{major}.0"
 
 
+def _get_addons(name: str, version: str) -> Optional[str]:
+    addons_path = Path.home() / "src" / name
+    if not addons_path.exists():
+        # TODO: log a warning that the addons does not exist
+        return None
+    addons_path = addons_path / version
+    if addons_path.exists():
+        return str(addons_path)
+    # TODO: Call git management to add worktree if the version is missing.
+    return None
+
+
 def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     """Find the correct venv, odoo-bin, and addon paths for the given version."""
     home = Path.home()
@@ -180,10 +192,13 @@ def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     if odoo_addons.exists():
         addon_paths.append(str(odoo_addons))
 
-    # Enterprise addons are optional but commonly used
-    enterprise_base = home / "src" / "enterprise" / version
-    if enterprise_base.exists():
-        addon_paths.append(str(enterprise_base))
+    enterprise_addons = _get_addons("enterprise", version)
+    if enterprise_addons:
+        addon_paths.append(enterprise_addons)
+
+    industry_addons = _get_addons("industry", version)
+    if industry_addons:
+        addon_paths.append(industry_addons)
 
     addons_path = ",".join(addon_paths) if addon_paths else None
     return venv_path, odoo_bin, addons_path
