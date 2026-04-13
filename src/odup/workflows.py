@@ -101,7 +101,9 @@ def upgrade_workflow(
     result_messages = []
     normalized_target_version = parse_version(target_version)
     upgraded_db_name = f"{db_name}_{normalized_target_version}"
-    venv_path, odoo_bin, addons_path = find_odoo_environment(normalized_target_version)
+    venv_path, odoo_bin, addons_path = find_odoo_environment(
+        normalized_target_version, add_industry=False
+    )
 
     result_messages.extend(
         [

@@ -16,7 +16,9 @@ def _get_addons(name: str, version: str) -> Optional[str]:
     return None
 
 
-def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
+def find_odoo_environment(
+    version: str, add_industry: bool = True
+) -> tuple[Path, Path, Optional[str]]:
     home = Path.home()
     odoo_base = home / "src" / "odoo" / version
 
@@ -41,9 +43,10 @@ def find_odoo_environment(version: str) -> tuple[Path, Path, Optional[str]]:
     if enterprise_addons:
         addon_paths.append(enterprise_addons)
 
-    industry_addons = _get_addons("industry", version)
-    if industry_addons:
-        addon_paths.append(industry_addons)
+    if add_industry:
+        industry_addons = _get_addons("industry", version)
+        if industry_addons:
+            addon_paths.append(industry_addons)
 
     addons_path = ",".join(addon_paths) if addon_paths else None
     return venv_path, odoo_bin, addons_path
