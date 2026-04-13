@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import typer
 
 from .error import OdupError
-from .odoo_utils import clone_database_from_template
-from .odoo_utils import drop_if_exists
-from .odoo_utils import find_odoo_environment
-from .odoo_utils import has_prepare_tests_marker
-from .odoo_utils import infer_version
-from .odoo_utils import parse_version
-from .odoo_utils import run_odoo_command
-from .odoo_utils import set_prepare_tests_marker
+from .workflows import WorkflowOutcome
+from .workflows import createdb_workflow
+from .workflows import start_workflow
+from .workflows import upgrade_workflow
 
 app = typer.Typer(help="Local helpers for prototyping Odoo upgrade workflows.")
 
@@ -27,9 +22,21 @@ def _handle_error(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
-def _upgrade_path_value() -> str:
-    home = Path.home()
-    return f"{(home / 'src' / 'upgrade-util' / 'src')},{(home / 'src' / 'upgrade' / 'migrations')}"
+def _exit_from_outcome(outcome: WorkflowOutcome) -> None:
+    for message in outcome.messages:
+        typer.echo(message)
+    if outcome.exit_code != 0:
+        if outcome.error_message:
+            typer.echo(outcome.error_message, err=True)
+        raise typer.Exit(outcome.exit_code)
+
+
+def _run_workflow(workflow, *args, **kwargs) -> None:
+    try:
+        outcome = workflow(*args, **kwargs)
+    except Exception as exc:
+        _handle_error(exc)
+    _exit_from_outcome(outcome)
 
 
 @app.command()
@@ -56,65 +63,9 @@ def createdb(
     ),
 ) -> None:
     """Create a fresh Odoo database for the requested version."""
-    try:
-        db_name = f"odup_{db_name}"
-        typer.echo(f"[odup] Creating Odoo database '{db_name}' for version {version}")
-
-        drop_if_exists(db_name)
-        version = parse_version(version)
-
-        venv_path, odoo_bin, addons_path = find_odoo_environment(version)
-    except Exception as exc:
-        _handle_error(exc)
-
-    typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
-    typer.echo(f"[odup] Using virtual environment: {venv_path}")
-    if addons_path:
-        typer.echo(f"[odup] Using addons path: {addons_path}")
-
-    args = ["-d", db_name]
-
-    if init:
-        args.extend(["-i", init])
-        typer.echo(f"[odup] Installing modules: {init}")
-
-    if tests:
-        args.extend(
-            [
-                "--upgrade-path",
-                _upgrade_path_value(),
-                "--test-enable",
-                "--test-tags",
-                "upgrade.test_prepare",
-            ]
-        )
-        typer.echo("[odup] Running upgrade prepare tests: upgrade.test_prepare")
-    args.extend(["--stop-after-init"])
-
-    typer.echo(f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(args)}")
-
-    try:
-        exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
-    except Exception as exc:
-        _handle_error(exc)
-
-    if exit_code != 0:
-        typer.echo(
-            f"[odup] Failed to create Odoo database '{db_name}' (exit code: {exit_code})",
-            err=True,
-        )
-        raise typer.Exit(exit_code)
-
-    if tests:
-        try:
-            set_prepare_tests_marker(db_name, version)
-        except Exception as exc:
-            _handle_error(exc)
-        typer.echo(
-            "[odup] Stored prepare-tests marker in DB metadata table (odup_metadata)."
-        )
-
-    typer.echo(f"[odup] Successfully created Odoo database '{db_name}'")
+    _run_workflow(
+        createdb_workflow, db_name=db_name, version=version, init=init, tests=tests
+    )
 
 
 @app.command()
@@ -128,90 +79,12 @@ def upgrade(
     ),
 ) -> None:
     """Clone and upgrade a database on a target Odoo version."""
-    try:
-        target_version = parse_version(target_version)
-        upgraded_db_name = f"{db_name}_{target_version}"
-        venv_path, odoo_bin, addons_path = find_odoo_environment(target_version)
-    except Exception as exc:
-        _handle_error(exc)
-
-    typer.echo(f"[odup] Source database: {db_name}")
-    typer.echo(f"[odup] Upgraded database: {upgraded_db_name}")
-    typer.echo(f"[odup] Target Odoo version: {target_version}")
-    typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
-    typer.echo(f"[odup] Using virtual environment: {venv_path}")
-    if addons_path:
-        typer.echo(f"[odup] Using addons path: {addons_path}")
-
-    try:
-        if tests and not has_prepare_tests_marker(db_name):
-            typer.echo(
-                f"[odup] Error: Source database '{db_name}' was not marked as prepared. Run 'odup createdb ... --tests' first.",
-                err=True,
-            )
-            raise typer.Exit(1)
-
-        drop_if_exists(upgraded_db_name)
-        clone_database_from_template(upgraded_db_name, db_name)
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        _handle_error(exc)
-
-    args = [
-        "-d",
-        upgraded_db_name,
-        "--upgrade-path",
-        _upgrade_path_value(),
-        "-u",
-        "all",
-        "--stop-after-init",
-    ]
-
-    typer.echo(f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(args)}")
-
-    try:
-        exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
-    except Exception as exc:
-        _handle_error(exc)
-
-    if exit_code != 0:
-        typer.echo(
-            f"[odup] Failed to upgrade database '{upgraded_db_name}' (exit code: {exit_code})",
-            err=True,
-        )
-        raise typer.Exit(exit_code)
-
-    if tests:
-        check_args = [
-            "-d",
-            upgraded_db_name,
-            "--upgrade-path",
-            _upgrade_path_value(),
-            "--test-enable",
-            "--test-tags",
-            "upgrade.test_check",
-            "--stop",
-        ]
-        typer.echo("[odup] Running upgrade check tests: upgrade.test_check")
-        typer.echo(
-            f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(check_args)}"
-        )
-        try:
-            check_exit_code = run_odoo_command(
-                venv_path, odoo_bin, check_args, addons_path
-            )
-        except Exception as exc:
-            _handle_error(exc)
-
-        if check_exit_code != 0:
-            typer.echo(
-                f"[odup] Upgrade check failed for database '{upgraded_db_name}' (exit code: {check_exit_code})",
-                err=True,
-            )
-            raise typer.Exit(check_exit_code)
-
-    typer.echo(f"[odup] Successfully upgraded database '{upgraded_db_name}'")
+    _run_workflow(
+        upgrade_workflow,
+        db_name=db_name,
+        target_version=target_version,
+        tests=tests,
+    )
 
 
 @app.command()
@@ -224,32 +97,7 @@ def start(
     ),
 ) -> None:
     """Start an existing Odoo database using its inferred version."""
-    typer.echo(f"[odup] Starting Odoo database '{db_name}'")
-
-    try:
-        version = infer_version(db_name)
-        venv_path, odoo_bin, addons_path = find_odoo_environment(version)
-    except Exception as exc:
-        _handle_error(exc)
-
-    typer.echo(f"[odup] Inferred Odoo version: {version}")
-    typer.echo(f"[odup] Using odoo-bin: {odoo_bin}")
-    typer.echo(f"[odup] Using virtual environment: {venv_path}")
-    if addons_path:
-        typer.echo(f"[odup] Using addons path: {addons_path}")
-
-    if shell:
-        args = ["shell", "-d", db_name]
-    else:
-        args = ["-d", db_name]
-
-    try:
-        exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
-    except Exception as exc:
-        _handle_error(exc)
-
-    if exit_code != 0:
-        raise typer.Exit(exit_code)
+    _run_workflow(start_workflow, db_name=db_name, shell=shell)
 
 
 @app.command()

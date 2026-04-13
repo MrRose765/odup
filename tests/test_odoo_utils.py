@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from odup import odoo_utils
+from odup.error import VersionDetectionError
+from odup import versioning
 
 
 class TestReadMasterVersion:
@@ -14,20 +16,21 @@ class TestReadMasterVersion:
         release_py.write_text(content, encoding="utf-8")
         return release_py
 
-
-    def test_read_master_floor_from_release__success(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_read_master_floor_from_release__success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         self._write_release_file(tmp_path, "version_info = (17, 0, 0, 'final', 0)\n")
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         assert odoo_utils._read_master_floor_from_release() == (17, 0)
 
-
-    def test_read_master_floor_from_release__missing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_read_master_floor_from_release__missing_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        with pytest.raises(odoo_utils.OdooEnvironmentError):
+        with pytest.raises(VersionDetectionError):
             odoo_utils._read_master_floor_from_release()
-
 
     def test_read_master_floor_from_release__missing_version_info(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -35,7 +38,7 @@ class TestReadMasterVersion:
         self._write_release_file(tmp_path, "# no version info\n")
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        with pytest.raises(odoo_utils.OdooEnvironmentError):
+        with pytest.raises(VersionDetectionError):
             odoo_utils._read_master_floor_from_release()
 
 
@@ -55,20 +58,27 @@ class TestParseVersion:
     def test_parse_version_normalization(
         self, version_str: str, expected: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(odoo_utils, "_read_master_floor_from_release", lambda: (17, 0))
+        monkeypatch.setattr(
+            versioning, "_read_master_floor_from_release", lambda: (17, 0)
+        )
 
         assert odoo_utils.parse_version(version_str) == expected
 
+    def test_parse_version_raises_on_no_digits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            versioning, "_read_master_floor_from_release", lambda: (17, 0)
+        )
 
-    def test_parse_version_raises_on_no_digits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(odoo_utils, "_read_master_floor_from_release", lambda: (17, 0))
-
-        with pytest.raises(ValueError):
+        with pytest.raises(VersionDetectionError):
             odoo_utils.parse_version("unknown")
 
 
 class TestOdooEnvironment:
-    def test_find_odoo_environment_happy_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_odoo_environment_happy_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         version = "16.0"
         odoo_base = tmp_path / "src" / "odoo" / version
         (odoo_base / ".venv" / "bin").mkdir(parents=True)
@@ -87,8 +97,9 @@ class TestOdooEnvironment:
         assert odoo_bin == odoo_base / "odoo-bin"
         assert addons_path == f"{odoo_base / 'addons'},{enterprise_base}"
 
-
-    def test_find_odoo_environment_missing_version(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_odoo_environment_missing_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         with pytest.raises(odoo_utils.OdooEnvironmentError):
