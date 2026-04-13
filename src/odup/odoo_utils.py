@@ -20,15 +20,26 @@ from .versioning import parse_version
 
 
 def run_odoo_command(
-    venv_path: Path, odoo_bin: Path, args: list[str], addons_path: Optional[str] = None
+    venv_path: Path,
+    odoo_bin: Path,
+    args: list[str],
+    addons_path: Optional[str] = None,
+    debug: bool = False,
 ) -> int:
     python_exe = venv_path / "bin" / "python"
-    cmd = [str(python_exe), str(odoo_bin)]
+    cmd = [str(python_exe)]
+    if debug:
+        print(
+            "[ODUP] Running odoo-bin in debug mode, waiting for debugger to attach on localhost:5678..."
+        )
+        cmd.extend(["-m", "debugpy", "--listen", "localhost:5678", "--wait-for-client"])
+    cmd.append(str(odoo_bin))
 
     if addons_path:
         cmd.extend(["--addons-path", addons_path])
 
     cmd.extend(args)
+    # TODO: Add structured command logging here once a logger is introduced.
 
     try:
         result = subprocess.run(cmd, check=False)

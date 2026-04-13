@@ -61,10 +61,20 @@ def createdb(
         "--tests",
         help="Run upgrade preparation tests (upgrade.test_prepare).",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
+    ),
 ) -> None:
     """Create a fresh Odoo database for the requested version."""
     _run_workflow(
-        createdb_workflow, db_name=db_name, version=version, init=init, tests=tests
+        createdb_workflow,
+        db_name=db_name,
+        version=version,
+        init=init,
+        tests=tests,
+        debug=debug,
     )
 
 
@@ -77,6 +87,11 @@ def upgrade(
         "--tests",
         help="Run upgrade check tests (upgrade.test_check) after upgrade.",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
+    ),
 ) -> None:
     """Clone and upgrade a database on a target Odoo version."""
     _run_workflow(
@@ -84,6 +99,7 @@ def upgrade(
         db_name=db_name,
         target_version=target_version,
         tests=tests,
+        debug=debug,
     )
 
 
@@ -95,9 +111,14 @@ def start(
         "--shell",
         help="Start the database in Odoo shell mode.",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
+    ),
 ) -> None:
     """Start an existing Odoo database using its inferred version."""
-    _run_workflow(start_workflow, db_name=db_name, shell=shell)
+    _run_workflow(start_workflow, db_name=db_name, shell=shell, debug=debug)
 
 
 @app.command()

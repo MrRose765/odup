@@ -20,6 +20,8 @@ The sync step creates a local `.venv` with Typer and friends pinned in `uv.lock`
 
 ## Available commands
 
-- `createdb <DBNAME> -v VERSION -i <modules> [--tests]` - provision a fresh database for a given Odoo release. With `--tests`, runs `upgrade.test_prepare`.
-- `start DBNAME [--shell]` - start a database or launch shell mode.
-- `upgrade <DBNAME> <TARGET_VERSION> [--tests]` - upgrade the db into a copy named `DBNAME_TARGETVERSION`. With `--tests`, verifies prepare marker on source DB and runs `upgrade.test_check` on upgraded DB.
+- `createdb <DBNAME> -v VERSION -i <modules> [--tests] [--debug]` - provision a fresh database for a given Odoo release. With `--tests`, runs `upgrade.test_prepare`.
+- `start DBNAME [--shell] [--debug]` - start a database or launch shell mode.
+- `upgrade <DBNAME> <TARGET_VERSION> [--tests] [--debug]` - upgrade the db into a copy named `DBNAME_TARGETVERSION`. With `--tests`, verifies prepare marker on source DB and runs `upgrade.test_check` on upgraded DB.
+
+With `--debug`, starts with debugpy and waits for debugger attach on `localhost:5678`.

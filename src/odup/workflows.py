@@ -43,7 +43,7 @@ def _build_environment_messages(
 
 
 def createdb_workflow(
-    db_name: str, version: Optional[str], init: Optional[str], tests: bool
+    db_name: str, version: Optional[str], init: Optional[str], tests: bool, debug: bool
 ) -> WorkflowOutcome:
     result_messages = []
     db_name = f"odup_{db_name}"
@@ -77,10 +77,7 @@ def createdb_workflow(
         )
     args.extend(["--stop-after-init"])
 
-    result_messages.append(
-        f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(args)}"
-    )
-    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
+    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
         return WorkflowOutcome(
             messages=result_messages,
@@ -98,7 +95,9 @@ def createdb_workflow(
     return WorkflowOutcome(messages=result_messages)
 
 
-def upgrade_workflow(db_name: str, target_version: str, tests: bool) -> WorkflowOutcome:
+def upgrade_workflow(
+    db_name: str, target_version: str, tests: bool, debug: bool
+) -> WorkflowOutcome:
     result_messages = []
     normalized_target_version = parse_version(target_version)
     upgraded_db_name = f"{db_name}_{normalized_target_version}"
@@ -132,10 +131,7 @@ def upgrade_workflow(db_name: str, target_version: str, tests: bool) -> Workflow
         "all",
         "--stop-after-init",
     ]
-    result_messages.append(
-        f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(args)}"
-    )
-    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
+    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
         return WorkflowOutcome(
             messages=result_messages,
@@ -155,10 +151,9 @@ def upgrade_workflow(db_name: str, target_version: str, tests: bool) -> Workflow
             "--stop",
         ]
         result_messages.append(f"[odup] Running upgrade check tests: {CHECK_TESTS_TAG}")
-        result_messages.append(
-            f"[odup] Running: {venv_path}/bin/python {odoo_bin} {' '.join(check_args)}"
+        check_exit_code = run_odoo_command(
+            venv_path, odoo_bin, check_args, addons_path, debug=debug
         )
-        check_exit_code = run_odoo_command(venv_path, odoo_bin, check_args, addons_path)
         if check_exit_code != 0:
             return WorkflowOutcome(
                 messages=result_messages,
@@ -172,7 +167,7 @@ def upgrade_workflow(db_name: str, target_version: str, tests: bool) -> Workflow
     return WorkflowOutcome(messages=result_messages)
 
 
-def start_workflow(db_name: str, shell: bool) -> WorkflowOutcome:
+def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
     result_messages = [f"[odup] Starting Odoo database '{db_name}'"]
 
     version = infer_version(db_name)
@@ -184,5 +179,5 @@ def start_workflow(db_name: str, shell: bool) -> WorkflowOutcome:
     )
 
     args = ["shell", "-d", db_name] if shell else ["-d", db_name]
-    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path)
+    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     return WorkflowOutcome(messages=result_messages, exit_code=exit_code)
