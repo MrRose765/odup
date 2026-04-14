@@ -36,7 +36,7 @@ def run_odoo_command(
     cmd.append(str(odoo_bin))
 
     if addons_path:
-        cmd.extend(["--addons-path", addons_path])
+        cmd.extend(["--addons-path=" + addons_path])
 
     cmd.extend(args)
     # TODO: Add structured command logging here once a logger is introduced.
