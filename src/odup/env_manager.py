@@ -1,20 +1,11 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Optional
 
+from . import git_manager
+
 SOURCE_REPOSITORIES = ("odoo", "enterprise", "industry")
-
-
-def _run_command(cmd: list[str], cwd: Path) -> None:
-    try:
-        subprocess.run(cmd, check=True, cwd=cwd)
-    except subprocess.CalledProcessError as exc:
-        rendered = " ".join(cmd)
-        raise RuntimeError(
-            f"Command failed in {cwd} with exit code {exc.returncode}: {rendered}"
-        ) from exc
 
 
 def _src_root() -> Path:
@@ -54,8 +45,38 @@ def pull_existing_sources(version: Optional[str] = None) -> tuple[list[str], lis
 
     for repository in repositories:
         messages.append(f"[odup] Pulling {repository}")
+
         try:
-            _run_command(["git", "pull", "--ff-only"], cwd=repository)
+            branch = git_manager.current_branch(repository)
+        except RuntimeError as exc:
+            failure = f"[odup] Failed {repository}: {exc}"
+            messages.append(failure)
+            failures.append(failure)
+            continue
+
+        if branch == "HEAD":
+            failure = f"[odup] Failed {repository}: detached HEAD; switch to a branch with an upstream before pulling"
+            messages.append(failure)
+            failures.append(failure)
+            continue
+
+        if not git_manager.has_upstream(repository):
+            failure = f"[odup] Failed {repository}: branch '{branch}' has no upstream configured"
+            messages.append(failure)
+            failures.append(failure)
+            continue
+
+        used_stash = False
+        try:
+            if git_manager.has_pending_changes(repository):
+                git_manager.stash(repository, "odup auto-stash before pull")
+                used_stash = True
+                messages.append(f"[odup] Stashed local changes in {repository}")
+
+            git_manager.pull_ff_only(repository)
+            if used_stash:
+                git_manager.stash_pop(repository)
+                messages.append(f"[odup] Restored stashed changes in {repository}")
             messages.append(f"[odup] Updated {repository}")
         except RuntimeError as exc:
             failure = f"[odup] Failed {repository}: {exc}"
