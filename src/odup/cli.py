@@ -7,10 +7,13 @@ import typer
 from .error import OdupError
 from .workflows import WorkflowOutcome
 from .workflows import createdb_workflow
+from .workflows import env_pull_workflow
 from .workflows import start_workflow
 from .workflows import upgrade_workflow
 
 app = typer.Typer(help="Local helpers for prototyping Odoo upgrade workflows.")
+env_app = typer.Typer(help="Manage local Odoo checkouts and virtual environments.")
+app.add_typer(env_app, name="env")
 
 
 def _handle_error(exc: Exception) -> None:
@@ -37,6 +40,17 @@ def _run_workflow(workflow, *args, **kwargs) -> None:
     except Exception as exc:
         _handle_error(exc)
     _exit_from_outcome(outcome)
+
+
+@env_app.command("pull")
+def env_pull(
+    version: Optional[str] = typer.Argument(
+        None,
+        help="Optional version to pull (for example: 16.0, saas-16.3, master). If omitted, pulls every local checkout.",
+    ),
+) -> None:
+    """Pull existing local Odoo source checkouts."""
+    _run_workflow(env_pull_workflow, version=version)
 
 
 @app.command()

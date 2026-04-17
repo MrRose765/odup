@@ -8,6 +8,7 @@ from .database import clone_database_from_template
 from .database import drop_if_exists
 from .database import has_prepare_tests_marker
 from .database import set_prepare_tests_marker
+from .env_manager import pull_existing_sources
 from .environment import find_odoo_environment
 from .error import OdupError
 from .odoo_utils import run_odoo_command
@@ -183,3 +184,15 @@ def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
     args = ["shell", "-d", db_name] if shell else ["-d", db_name]
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     return WorkflowOutcome(messages=result_messages, exit_code=exit_code)
+
+
+def env_pull_workflow(version: Optional[str] = None) -> WorkflowOutcome:
+    normalized_version = parse_version(version) if version else None
+    messages, failures = pull_existing_sources(version=normalized_version)
+    if failures:
+        return WorkflowOutcome(
+            messages=messages,
+            exit_code=1,
+            error_message=f"[odup] {len(failures)} checkout(s) failed to update.",
+        )
+    return WorkflowOutcome(messages=messages)

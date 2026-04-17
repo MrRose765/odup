@@ -23,5 +23,6 @@ The sync step creates a local `.venv` with Typer and friends pinned in `uv.lock`
 - `createdb <DBNAME> -v VERSION -i <modules> [--tests] [--debug]` - provision a fresh database for a given Odoo release. With `--tests`, runs `upgrade.test_prepare`.
 - `start DBNAME [--shell] [--debug]` - start a database or launch shell mode.
 - `upgrade <DBNAME> <TARGET_VERSION> [--tests] [--debug]` - upgrade the db into a copy named `DBNAME_TARGETVERSION`. With `--tests`, verifies prepare marker on source DB and runs `upgrade.test_check` on upgraded DB.
+- `env pull [VERSION]` - pull existing git checkouts found under `~/src/odoo`, `~/src/enterprise`, and `~/src/industry`. When VERSION is set, it is normalized (for example `19.2` -> `saas-19.2`) and only matching checkouts are pulled.
 
 With `--debug`, starts with debugpy and waits for debugger attach on `localhost:5678`.
