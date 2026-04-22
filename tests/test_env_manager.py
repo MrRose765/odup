@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -57,7 +58,10 @@ class TestDiscoverExistingSources:
 
 
 class TestPullExistingSources:
-    def test_pull_existing_sources_collects_failures(self, tmp_path: Path) -> None:
+    def test_pull_existing_sources_collects_failures(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        caplog.set_level(logging.INFO)
         _create_worktree(tmp_path, "odoo", "16.0")
         _create_worktree(tmp_path, "enterprise", "16.0")
 
@@ -79,9 +83,9 @@ class TestPullExistingSources:
                 pull_ff_only=fake_pull,
             ),
         ):
-            messages, failures = env_manager.pull_existing_sources()
+            failures = env_manager.pull_existing_sources()
 
-        assert any("Updated" in message for message in messages)
+        assert any("Updated" in record.message for record in caplog.records)
         assert len(failures) == 1
         assert "enterprise" in failures[0]
 
@@ -106,15 +110,16 @@ class TestPullExistingSources:
                 pull_ff_only=fake_pull,
             ),
         ):
-            _, failures = env_manager.pull_existing_sources(version="16.0")
+            failures = env_manager.pull_existing_sources(version="16.0")
 
         assert not failures
         assert len(commands) == 1
         assert commands[0] == tmp_path / "src" / "odoo" / "16.0"
 
     def test_pull_existing_sources_stashes_then_restores_changes(
-        self, tmp_path: Path
+        self, tmp_path: Path, caplog
     ) -> None:
+        caplog.set_level(logging.DEBUG)
         repository = _create_worktree(tmp_path, "odoo", "16.0")
 
         calls: list[str] = []
@@ -144,11 +149,19 @@ class TestPullExistingSources:
                 stash_pop=fake_stash_pop,
             ),
         ):
-            messages, failures = env_manager.pull_existing_sources(version="16.0")
+            failures = env_manager.pull_existing_sources(version="16.0")
 
         assert not failures
-        assert any("Stashed local changes" in message for message in messages)
-        assert any("Restored stashed changes" in message for message in messages)
+        assert any(
+            record.levelno == logging.DEBUG
+            and "Stashed local changes" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            record.levelno == logging.DEBUG
+            and "Restored stashed changes" in record.message
+            for record in caplog.records
+        )
         # Guard against regressions where stash/pop order is broken.
         assert calls == ["stash", "pull", "stash_pop"]
 
@@ -162,7 +175,7 @@ class TestPullExistingSources:
                 current_branch=lambda cwd: "HEAD" if cwd == repository else "16.0",
             ),
         ):
-            _, failures = env_manager.pull_existing_sources(version="16.0")
+            failures = env_manager.pull_existing_sources(version="16.0")
 
         assert len(failures) == 1
         assert "detached HEAD" in failures[0]

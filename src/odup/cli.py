@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import os
+import sys
 from typing import Optional
 
 import typer
@@ -11,34 +14,80 @@ from .workflows import env_pull_workflow
 from .workflows import start_workflow
 from .workflows import upgrade_workflow
 
-app = typer.Typer(help="Local helpers for prototyping Odoo upgrade workflows.")
+app = typer.Typer(
+    help="Local helpers for prototyping Odoo upgrade workflows.",
+    pretty_exceptions_enable=True,
+    pretty_exceptions_show_locals=False,
+    pretty_exceptions_short=True,
+)
 env_app = typer.Typer(help="Manage local Odoo checkouts and virtual environments.")
 app.add_typer(env_app, name="env")
+logger = logging.getLogger(__name__)
 
 
-def _handle_error(exc: Exception) -> None:
-    """Convert domain exceptions to consistent CLI output and exit code."""
-    if isinstance(exc, OdupError):
-        typer.echo(f"[odup] Error: {exc}", err=True)
-    else:
-        typer.echo(f"[odup] Unexpected error: {exc}", err=True)
+class LevelColorFormatter(logging.Formatter):
+    RESET = "\033[0m"
+    COLORS = {
+        logging.INFO: "\033[32m",  # green
+        logging.WARNING: "\033[38;5;214m",  # orange
+        logging.ERROR: "\033[31m",  # red
+        logging.CRITICAL: "\033[31m",  # red
+    }
+
+    def __init__(self, fmt: str, datefmt: str | None = None, use_colors: bool = True):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+        self.use_colors = use_colors
+
+    def format(self, record: logging.LogRecord) -> str:
+        original_levelname = record.levelname
+        if self.use_colors:
+            color = self.COLORS.get(record.levelno)
+            if color:
+                record.levelname = f"{color}{record.levelname}{self.RESET}"
+        try:
+            return super().format(record)
+        finally:
+            record.levelname = original_levelname
+
+
+@app.callback()
+def _configure_logging() -> None:
+    use_colors = sys.stderr.isatty() and "NO_COLOR" not in os.environ
+    formatter = LevelColorFormatter(
+        fmt="%(asctime)s %(levelname)s ? [%(name)s]: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        use_colors=use_colors,
+    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+
+
+def _handle_error(exc: OdupError) -> None:
+    """Render expected domain errors consistently and exit with code 1."""
+    logger.error(exc)
     raise typer.Exit(1)
 
 
 def _exit_from_outcome(outcome: WorkflowOutcome) -> None:
-    for message in outcome.messages:
-        typer.echo(message)
     if outcome.exit_code != 0:
         if outcome.error_message:
-            typer.echo(outcome.error_message, err=True)
+            logger.error(outcome.error_message)
         raise typer.Exit(outcome.exit_code)
 
 
 def _run_workflow(workflow, *args, **kwargs) -> None:
     try:
         outcome = workflow(*args, **kwargs)
-    except Exception as exc:
+    except OdupError as exc:
         _handle_error(exc)
+    except Exception:
+        # Let Typer/Click render unexpected exceptions (rich traceback when available).
+        raise
     _exit_from_outcome(outcome)
 
 
@@ -140,7 +189,7 @@ def test(
     scenario: str = typer.Argument(..., help="Ad-hoc test scenario to execute."),
 ) -> None:
     """Placeholder command for future testing helpers."""
-    typer.echo(f"[odup] Would run scenario '{scenario}'.")
+    logger.info("Would run scenario '%s'.", scenario)
 
 
 def main() -> None:

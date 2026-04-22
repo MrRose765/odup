@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -17,11 +18,11 @@ from .versioning import parse_version
 
 PREPARE_TESTS_TAG = "upgrade.test_prepare"
 CHECK_TESTS_TAG = "upgrade.test_check"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class WorkflowOutcome:
-    messages: list[str]
     exit_code: int = 0
     error_message: Optional[str] = None
 
@@ -31,38 +32,31 @@ def _upgrade_path_value() -> str:
     return f"{(home / 'src' / 'upgrade-util' / 'src')},{(home / 'src' / 'upgrade' / 'migrations')}"
 
 
-def _build_environment_messages(
+def _log_environment_context(
     odoo_bin: Path, venv_path: Path, addons_path: Optional[str]
-) -> list[str]:
-    messages = [
-        f"[odup] Using odoo-bin: {odoo_bin}",
-        f"[odup] Using virtual environment: {venv_path}",
-    ]
+) -> None:
+    logger.debug("Using odoo-bin: %s", odoo_bin)
+    logger.debug("Using virtual environment: %s", venv_path)
     if addons_path:
-        messages.append(f"[odup] Using addons path: {addons_path}")
-    return messages
+        logger.debug("Using addons path: %s", addons_path)
 
 
 def createdb_workflow(
     db_name: str, version: Optional[str], init: Optional[str], tests: bool, debug: bool
 ) -> WorkflowOutcome:
-    result_messages = []
     db_name = f"odup_{db_name}"
-    result_messages.append(
-        f"[odup] Creating Odoo database '{db_name}' for version {version}"
-    )
+    logger.info("Creating Odoo database '%s' for version %s", db_name, version)
 
     drop_if_exists(db_name)
     normalized_version = parse_version(version or "master")
+    logger.debug("Normalized Odoo version: %s", normalized_version)
     venv_path, odoo_bin, addons_path = find_odoo_environment(normalized_version)
-    result_messages.extend(
-        _build_environment_messages(odoo_bin, venv_path, addons_path)
-    )
+    _log_environment_context(odoo_bin, venv_path, addons_path)
 
     args = ["-d", db_name]
     if init:
         args.extend(["-i", init])
-        result_messages.append(f"[odup] Installing modules: {init}")
+        logger.info("Installing modules: %s", init)
     if tests:
         args.extend(
             [
@@ -73,49 +67,39 @@ def createdb_workflow(
                 PREPARE_TESTS_TAG,
             ]
         )
-        result_messages.append(
-            f"[odup] Running upgrade prepare tests: {PREPARE_TESTS_TAG}"
-        )
+        logger.info("Running upgrade prepare tests: %s", PREPARE_TESTS_TAG)
     args.extend(["--stop-after-init"])
 
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
         return WorkflowOutcome(
-            messages=result_messages,
             exit_code=exit_code,
-            error_message=f"[odup] Failed to create Odoo database '{db_name}' (exit code: {exit_code})",
+            error_message=f"Failed to create Odoo database '{db_name}' (exit code: {exit_code})",
         )
 
     if tests:
         set_prepare_tests_marker(db_name, normalized_version)
-        result_messages.append(
-            "[odup] Stored prepare-tests marker in DB metadata table (odup_metadata)."
+        logger.info(
+            "Stored prepare-tests marker in DB metadata table (odup_metadata)."
         )
 
-    result_messages.append(f"[odup] Successfully created Odoo database '{db_name}'")
-    return WorkflowOutcome(messages=result_messages)
+    logger.info("Successfully created Odoo database '%s'", db_name)
+    return WorkflowOutcome()
 
 
 def upgrade_workflow(
     db_name: str, target_version: str, tests: bool, debug: bool
 ) -> WorkflowOutcome:
-    result_messages = []
     normalized_target_version = parse_version(target_version)
     upgraded_db_name = f"{db_name}_{normalized_target_version}"
+    logger.info("Source database: %s", db_name)
+    logger.info("Upgraded database: %s", upgraded_db_name)
+    logger.info("Target Odoo version: %s", normalized_target_version)
     venv_path, odoo_bin, addons_path = find_odoo_environment(
         normalized_target_version, add_industry=False
     )
 
-    result_messages.extend(
-        [
-            f"[odup] Source database: {db_name}",
-            f"[odup] Upgraded database: {upgraded_db_name}",
-            f"[odup] Target Odoo version: {normalized_target_version}",
-        ]
-    )
-    result_messages.extend(
-        _build_environment_messages(odoo_bin, venv_path, addons_path)
-    )
+    _log_environment_context(odoo_bin, venv_path, addons_path)
 
     if tests and not has_prepare_tests_marker(db_name):
         raise OdupError(
@@ -137,9 +121,8 @@ def upgrade_workflow(
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
         return WorkflowOutcome(
-            messages=result_messages,
             exit_code=exit_code,
-            error_message=f"[odup] Failed to upgrade database '{upgraded_db_name}' (exit code: {exit_code})",
+            error_message=f"Failed to upgrade database '{upgraded_db_name}' (exit code: {exit_code})",
         )
 
     if tests:
@@ -153,46 +136,40 @@ def upgrade_workflow(
             CHECK_TESTS_TAG,
             "--stop",
         ]
-        result_messages.append(f"[odup] Running upgrade check tests: {CHECK_TESTS_TAG}")
+        logger.info("Running upgrade check tests: %s", CHECK_TESTS_TAG)
         check_exit_code = run_odoo_command(
             venv_path, odoo_bin, check_args, addons_path, debug=debug
         )
         if check_exit_code != 0:
             return WorkflowOutcome(
-                messages=result_messages,
                 exit_code=check_exit_code,
-                error_message=f"[odup] Upgrade check failed for database '{upgraded_db_name}' (exit code: {check_exit_code})",
+                error_message=f"Upgrade check failed for database '{upgraded_db_name}' (exit code: {check_exit_code})",
             )
 
-    result_messages.append(
-        f"[odup] Successfully upgraded database '{upgraded_db_name}'"
-    )
-    return WorkflowOutcome(messages=result_messages)
+    logger.info("Successfully upgraded database '%s'", upgraded_db_name)
+    return WorkflowOutcome()
 
 
 def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
-    result_messages = [f"[odup] Starting Odoo database '{db_name}'"]
+    logger.info("Starting Odoo database '%s'", db_name)
 
     version = infer_version(db_name)
     venv_path, odoo_bin, addons_path = find_odoo_environment(version)
 
-    result_messages.append(f"[odup] Inferred Odoo version: {version}")
-    result_messages.extend(
-        _build_environment_messages(odoo_bin, venv_path, addons_path)
-    )
+    logger.info("Inferred Odoo version: %s", version)
+    _log_environment_context(odoo_bin, venv_path, addons_path)
 
     args = ["shell", "-d", db_name] if shell else ["-d", db_name]
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
-    return WorkflowOutcome(messages=result_messages, exit_code=exit_code)
+    return WorkflowOutcome(exit_code=exit_code)
 
 
 def env_pull_workflow(version: Optional[str] = None) -> WorkflowOutcome:
     normalized_version = parse_version(version) if version else None
-    messages, failures = pull_existing_sources(version=normalized_version)
+    failures = pull_existing_sources(version=normalized_version)
     if failures:
         return WorkflowOutcome(
-            messages=messages,
             exit_code=1,
-            error_message=f"[odup] {len(failures)} checkout(s) failed to update.",
+            error_message=f"{len(failures)} checkout(s) failed to update.",
         )
-    return WorkflowOutcome(messages=messages)
+    return WorkflowOutcome()

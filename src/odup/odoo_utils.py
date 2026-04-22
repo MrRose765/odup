@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -18,6 +20,8 @@ from .versioning import infer_version
 from .versioning import _read_master_floor_from_release
 from .versioning import parse_version
 
+logger = logging.getLogger(__name__)
+
 
 def run_odoo_command(
     venv_path: Path,
@@ -29,8 +33,8 @@ def run_odoo_command(
     python_exe = venv_path / "bin" / "python"
     cmd = [str(python_exe)]
     if debug:
-        print(
-            "[ODUP] Running odoo-bin in debug mode, waiting for debugger to attach on localhost:5678..."
+        logger.info(
+            "Running odoo-bin in debug mode, waiting for debugger to attach on localhost:5678..."
         )
         cmd.extend(["-m", "debugpy", "--listen", "localhost:5678", "--wait-for-client"])
     cmd.append(str(odoo_bin))
@@ -39,7 +43,8 @@ def run_odoo_command(
         cmd.extend(["--addons-path=" + addons_path])
 
     cmd.extend(args)
-    # TODO: Add structured command logging here once a logger is introduced.
+    logger.info("Running odoo-bin")
+    logger.debug("Command: %s", shlex.join(cmd))
 
     try:
         result = subprocess.run(cmd, check=False)

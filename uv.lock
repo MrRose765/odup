@@ -76,7 +76,7 @@ wheels = [
 
 [[package]]
 name = "odup"
-version = "1.2.2"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "psycopg2" },

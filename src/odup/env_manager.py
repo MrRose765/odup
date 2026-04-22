@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from . import git_manager
 
 SOURCE_REPOSITORIES = ("odoo", "enterprise", "industry")
+logger = logging.getLogger(__name__)
 
 
 def _src_root() -> Path:
@@ -31,38 +33,39 @@ def discover_existing_sources(version: Optional[str] = None) -> list[Path]:
     return sorted(repositories)
 
 
-def pull_existing_sources(version: Optional[str] = None) -> tuple[list[str], list[str]]:
-    messages: list[str] = []
+def pull_existing_sources(version: Optional[str] = None) -> list[str]:
     failures: list[str] = []
 
     repositories = discover_existing_sources(version=version)
     if not repositories:
         if version:
-            return [f"[odup] No local git checkouts found for version '{version}'"], []
-        return [
-            "[odup] No local git checkouts found under ~/src/{odoo,enterprise,industry}"
-        ], []
+            logger.warning("No local git checkouts found for version '%s'", version)
+            return failures
+        logger.warning(
+            "No local git checkouts found under ~/src/{odoo,enterprise,industry}"
+        )
+        return failures
 
     for repository in repositories:
-        messages.append(f"[odup] Pulling {repository}")
+        logger.info("Pulling %s", repository)
 
         try:
             branch = git_manager.current_branch(repository)
         except RuntimeError as exc:
-            failure = f"[odup] Failed {repository}: {exc}"
-            messages.append(failure)
+            failure = f"Failed {repository}: {exc}"
+            logger.error(failure)
             failures.append(failure)
             continue
 
         if branch == "HEAD":
-            failure = f"[odup] Failed {repository}: detached HEAD; switch to a branch with an upstream before pulling"
-            messages.append(failure)
+            failure = f"Failed {repository}: detached HEAD; switch to a branch with an upstream before pulling"
+            logger.error(failure)
             failures.append(failure)
             continue
 
         if not git_manager.has_upstream(repository):
-            failure = f"[odup] Failed {repository}: branch '{branch}' has no upstream configured"
-            messages.append(failure)
+            failure = f"Failed {repository}: branch '{branch}' has no upstream configured"
+            logger.error(failure)
             failures.append(failure)
             continue
 
@@ -71,16 +74,16 @@ def pull_existing_sources(version: Optional[str] = None) -> tuple[list[str], lis
             if git_manager.has_pending_changes(repository):
                 git_manager.stash(repository, "odup auto-stash before pull")
                 used_stash = True
-                messages.append(f"[odup] Stashed local changes in {repository}")
+                logger.debug("Stashed local changes in %s", repository)
 
             git_manager.pull_ff_only(repository)
             if used_stash:
                 git_manager.stash_pop(repository)
-                messages.append(f"[odup] Restored stashed changes in {repository}")
-            messages.append(f"[odup] Updated {repository}")
+                logger.debug("Restored stashed changes in %s", repository)
+            logger.info("Updated %s", repository)
         except RuntimeError as exc:
-            failure = f"[odup] Failed {repository}: {exc}"
-            messages.append(failure)
+            failure = f"Failed {repository}: {exc}"
+            logger.error(failure)
             failures.append(failure)
 
-    return messages, failures
+    return failures
