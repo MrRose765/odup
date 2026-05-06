@@ -14,6 +14,14 @@ def _src_root() -> Path:
     return Path.home() / "src"
 
 
+def _pull_label(repository: Path) -> str:
+    return f"pull {repository.parent.name}/{repository.name}"
+
+
+def _format_failure(repository: Path, reason: str) -> str:
+    return f"{_pull_label(repository)} has failed: {reason}"
+
+
 def discover_existing_sources(version: Optional[str] = None) -> list[Path]:
     src_root = _src_root()
     repositories: list[Path] = []
@@ -33,8 +41,11 @@ def discover_existing_sources(version: Optional[str] = None) -> list[Path]:
     return sorted(repositories)
 
 
-def pull_existing_sources(version: Optional[str] = None) -> list[str]:
+def pull_existing_sources(
+    version: Optional[str] = None, verbosity: int = 0
+) -> list[str]:
     failures: list[str] = []
+    git = git_manager.GitManager(verbosity=verbosity)
 
     repositories = discover_existing_sources(version=version)
     if not repositories:
@@ -50,40 +61,41 @@ def pull_existing_sources(version: Optional[str] = None) -> list[str]:
         logger.info("Pulling %s", repository)
 
         try:
-            branch = git_manager.current_branch(repository)
+            branch = git.current_branch(repository)
         except RuntimeError as exc:
-            failure = f"Failed {repository}: {exc}"
-            logger.error(failure)
+            failure = _format_failure(repository, str(exc))
             failures.append(failure)
             continue
 
         if branch == "HEAD":
-            failure = f"Failed {repository}: detached HEAD; switch to a branch with an upstream before pulling"
-            logger.error(failure)
+            failure = _format_failure(
+                repository,
+                "detached HEAD; switch to a branch with an upstream before pulling",
+            )
             failures.append(failure)
             continue
 
-        if not git_manager.has_upstream(repository):
-            failure = f"Failed {repository}: branch '{branch}' has no upstream configured"
-            logger.error(failure)
+        if not git.has_upstream(repository):
+            failure = _format_failure(
+                repository, f"branch '{branch}' has no upstream configured"
+            )
             failures.append(failure)
             continue
 
         used_stash = False
         try:
-            if git_manager.has_pending_changes(repository):
-                git_manager.stash(repository, "odup auto-stash before pull")
+            if git.has_pending_changes(repository):
+                git.stash(repository, "odup auto-stash before pull")
                 used_stash = True
                 logger.debug("Stashed local changes in %s", repository)
 
-            git_manager.pull_ff_only(repository)
+            git.pull_ff_only(repository)
             if used_stash:
-                git_manager.stash_pop(repository)
+                git.stash_pop(repository)
                 logger.debug("Restored stashed changes in %s", repository)
             logger.info("Updated %s", repository)
         except RuntimeError as exc:
-            failure = f"Failed {repository}: {exc}"
-            logger.error(failure)
+            failure = _format_failure(repository, str(exc))
             failures.append(failure)
 
     return failures

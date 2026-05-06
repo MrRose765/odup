@@ -79,9 +79,7 @@ def createdb_workflow(
 
     if tests:
         set_prepare_tests_marker(db_name, normalized_version)
-        logger.info(
-            "Stored prepare-tests marker in DB metadata table (odup_metadata)."
-        )
+        logger.info("Stored prepare-tests marker in DB metadata table (odup_metadata).")
 
     logger.info("Successfully created Odoo database '%s'", db_name)
     return WorkflowOutcome()
@@ -164,12 +162,13 @@ def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
     return WorkflowOutcome(exit_code=exit_code)
 
 
-def env_pull_workflow(version: Optional[str] = None) -> WorkflowOutcome:
+def env_pull_workflow(
+    version: Optional[str] = None, verbosity: int = 0
+) -> WorkflowOutcome:
     normalized_version = parse_version(version) if version else None
-    failures = pull_existing_sources(version=normalized_version)
+    failures = pull_existing_sources(version=normalized_version, verbosity=verbosity)
     if failures:
-        return WorkflowOutcome(
-            exit_code=1,
-            error_message=f"{len(failures)} checkout(s) failed to update.",
-        )
+        report = "\n".join(f"- {failure}" for failure in failures)
+        logger.error("Pull report:\n%s", report)
+        return WorkflowOutcome(exit_code=1)
     return WorkflowOutcome()

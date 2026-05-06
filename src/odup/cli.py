@@ -97,9 +97,18 @@ def env_pull(
         None,
         help="Optional version to pull (for example: 16.0, saas-16.3, master). If omitted, pulls every local checkout.",
     ),
+    verbosity: int = typer.Option(
+        0,
+        "-v",
+        "--verbose",
+        count=True,
+        help="Use -v for debug logs and -vv to also show git command output.",
+    ),
 ) -> None:
     """Pull existing local Odoo source checkouts."""
-    _run_workflow(env_pull_workflow, version=version)
+    if verbosity:
+        logging.getLogger().setLevel(logging.DEBUG)
+    _run_workflow(env_pull_workflow, version=version, verbosity=verbosity)
 
 
 @app.command()

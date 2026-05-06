@@ -58,6 +58,32 @@ class TestDiscoverExistingSources:
 
 
 class TestPullExistingSources:
+    class FakeGitManager:
+        """Base test double for GitManager with configurable behavior."""
+
+        def __init__(self, verbosity: int = 0) -> None:
+            self.verbosity = verbosity
+            self.commands: list[Path] = []
+            self.created_verbosity: list[int] = []
+
+        def current_branch(self, cwd: Path) -> str:
+            return "16.0"
+
+        def has_upstream(self, cwd: Path) -> bool:
+            return True
+
+        def has_pending_changes(self, cwd: Path) -> bool:
+            return False
+
+        def pull_ff_only(self, cwd: Path) -> None:
+            self.commands.append(cwd)
+
+        def stash(self, cwd: Path, message: str = "odup auto-stash") -> None:
+            pass
+
+        def stash_pop(self, cwd: Path) -> None:
+            pass
+
     def test_pull_existing_sources_collects_failures(
         self, tmp_path: Path, caplog
     ) -> None:
@@ -65,56 +91,49 @@ class TestPullExistingSources:
         _create_worktree(tmp_path, "odoo", "16.0")
         _create_worktree(tmp_path, "enterprise", "16.0")
 
-        commands: list[Path] = []
+        class FailingGitManager(self.FakeGitManager):
+            def pull_ff_only(self, cwd: Path) -> None:
+                self.commands.append(cwd)
+                if "enterprise" in str(cwd):
+                    raise RuntimeError("boom")
 
-        def fake_pull(cwd: Path) -> None:
-            commands.append(cwd)
-            # Force one repository to fail so we can assert partial-success handling.
-            if "enterprise" in str(cwd):
-                raise RuntimeError("boom")
+        git_instance = None
+
+        def capture_git(*args, **kwargs):
+            nonlocal git_instance
+            git_instance = FailingGitManager(*args, **kwargs)
+            return git_instance
 
         with (
             patch("odup.env_manager.Path.home", return_value=tmp_path),
-            patch.multiple(
-                "odup.env_manager.git_manager",
-                current_branch=lambda _cwd: "16.0",
-                has_upstream=lambda _cwd: True,
-                has_pending_changes=lambda _cwd: False,
-                pull_ff_only=fake_pull,
-            ),
+            patch("odup.env_manager.git_manager.GitManager", side_effect=capture_git),
         ):
             failures = env_manager.pull_existing_sources()
 
-        assert any("Updated" in record.message for record in caplog.records)
         assert len(failures) == 1
-        assert "enterprise" in failures[0]
-
-        assert len(commands) == 2
+        assert failures[0].startswith("pull enterprise/16.0 has failed: boom")
+        assert len(git_instance.commands) == 2
 
     def test_pull_existing_sources_for_specific_version(self, tmp_path: Path) -> None:
         _create_worktree(tmp_path, "odoo", "16.0")
         _create_worktree(tmp_path, "odoo", "17.0")
 
-        commands: list[Path] = []
+        git_instance = None
 
-        def fake_pull(cwd: Path) -> None:
-            commands.append(cwd)
+        def capture_git(*args, **kwargs):
+            nonlocal git_instance
+            git_instance = self.FakeGitManager(*args, **kwargs)
+            return git_instance
 
         with (
             patch("odup.env_manager.Path.home", return_value=tmp_path),
-            patch.multiple(
-                "odup.env_manager.git_manager",
-                current_branch=lambda _cwd: "16.0",
-                has_upstream=lambda _cwd: True,
-                has_pending_changes=lambda _cwd: False,
-                pull_ff_only=fake_pull,
-            ),
+            patch("odup.env_manager.git_manager.GitManager", side_effect=capture_git),
         ):
             failures = env_manager.pull_existing_sources(version="16.0")
 
         assert not failures
-        assert len(commands) == 1
-        assert commands[0] == tmp_path / "src" / "odoo" / "16.0"
+        assert len(git_instance.commands) == 1
+        assert git_instance.commands[0] == tmp_path / "src" / "odoo" / "16.0"
 
     def test_pull_existing_sources_stashes_then_restores_changes(
         self, tmp_path: Path, caplog
@@ -122,34 +141,49 @@ class TestPullExistingSources:
         caplog.set_level(logging.DEBUG)
         repository = _create_worktree(tmp_path, "odoo", "16.0")
 
-        calls: list[str] = []
+        class StashingGitManager(self.FakeGitManager):
+            def __init__(self, verbosity: int = 0) -> None:
+                super().__init__(verbosity)
+                self.calls: list[str] = []
+                self.created_verbosity: list[int] = [verbosity]
 
-        def fake_stash(cwd: Path, message: str) -> None:
-            assert cwd == repository
-            assert message == "odup auto-stash before pull"
-            calls.append("stash")
+            def current_branch(self, cwd: Path) -> str:
+                assert cwd == repository
+                return "16.0"
 
-        def fake_pull(cwd: Path) -> None:
-            assert cwd == repository
-            calls.append("pull")
+            def has_upstream(self, cwd: Path) -> bool:
+                assert cwd == repository
+                return True
 
-        def fake_stash_pop(cwd: Path) -> None:
-            assert cwd == repository
-            calls.append("stash_pop")
+            def has_pending_changes(self, cwd: Path) -> bool:
+                assert cwd == repository
+                return True
+
+            def stash(self, cwd: Path, message: str = "odup auto-stash") -> None:
+                assert cwd == repository
+                assert message == "odup auto-stash before pull"
+                self.calls.append("stash")
+
+            def pull_ff_only(self, cwd: Path) -> None:
+                assert cwd == repository
+                self.calls.append("pull")
+
+            def stash_pop(self, cwd: Path) -> None:
+                assert cwd == repository
+                self.calls.append("stash_pop")
+
+        git_instance = None
+
+        def capture_git(*args, **kwargs):
+            nonlocal git_instance
+            git_instance = StashingGitManager(*args, **kwargs)
+            return git_instance
 
         with (
             patch("odup.env_manager.Path.home", return_value=tmp_path),
-            patch.multiple(
-                "odup.env_manager.git_manager",
-                current_branch=lambda _cwd: "16.0",
-                has_upstream=lambda _cwd: True,
-                has_pending_changes=lambda _cwd: True,
-                stash=fake_stash,
-                pull_ff_only=fake_pull,
-                stash_pop=fake_stash_pop,
-            ),
+            patch("odup.env_manager.git_manager.GitManager", side_effect=capture_git),
         ):
-            failures = env_manager.pull_existing_sources(version="16.0")
+            failures = env_manager.pull_existing_sources(version="16.0", verbosity=2)
 
         assert not failures
         assert any(
@@ -163,19 +197,26 @@ class TestPullExistingSources:
             for record in caplog.records
         )
         # Guard against regressions where stash/pop order is broken.
-        assert calls == ["stash", "pull", "stash_pop"]
+        assert git_instance.calls == ["stash", "pull", "stash_pop"]
+        assert git_instance.created_verbosity == [2]
 
     def test_pull_existing_sources_fails_on_detached_head(self, tmp_path: Path) -> None:
         repository = _create_worktree(tmp_path, "odoo", "16.0")
 
+        class DetachedHeadGitManager(self.FakeGitManager):
+            def current_branch(self, cwd: Path) -> str:
+                return "HEAD" if cwd == repository else "16.0"
+
         with (
             patch("odup.env_manager.Path.home", return_value=tmp_path),
-            patch.multiple(
-                "odup.env_manager.git_manager",
-                current_branch=lambda cwd: "HEAD" if cwd == repository else "16.0",
+            patch(
+                "odup.env_manager.git_manager.GitManager",
+                side_effect=DetachedHeadGitManager,
             ),
         ):
             failures = env_manager.pull_existing_sources(version="16.0")
 
         assert len(failures) == 1
-        assert "detached HEAD" in failures[0]
+        assert failures[0].startswith(
+            "pull odoo/16.0 has failed: detached HEAD; switch to a branch with an upstream before pulling"
+        )
