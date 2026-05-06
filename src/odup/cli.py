@@ -23,6 +23,10 @@ app = typer.Typer(
 env_app = typer.Typer(help="Manage local Odoo checkouts and virtual environments.")
 app.add_typer(env_app, name="env")
 logger = logging.getLogger(__name__)
+ODOO_COMMAND_CONTEXT = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+}
 
 
 class LevelColorFormatter(logging.Formatter):
@@ -111,8 +115,9 @@ def env_pull(
     _run_workflow(env_pull_workflow, version=version, verbosity=verbosity)
 
 
-@app.command()
+@app.command(context_settings=ODOO_COMMAND_CONTEXT)
 def createdb(
+    ctx: typer.Context,
     db_name: str = typer.Argument(
         ..., help="Odoo database name to create. (Will be prefixed with 'odup_')"
     ),
@@ -142,6 +147,7 @@ def createdb(
     """Create a fresh Odoo database for the requested version."""
     _run_workflow(
         createdb_workflow,
+        extra_args=list(ctx.args),
         db_name=db_name,
         version=version,
         init=init,
@@ -150,8 +156,9 @@ def createdb(
     )
 
 
-@app.command()
+@app.command(context_settings=ODOO_COMMAND_CONTEXT)
 def upgrade(
+    ctx: typer.Context,
     db_name: str = typer.Argument(..., help="Source Odoo database name."),
     target_version: str = typer.Argument(..., help="Target version to upgrade to."),
     tests: bool = typer.Option(
@@ -168,6 +175,7 @@ def upgrade(
     """Clone and upgrade a database on a target Odoo version."""
     _run_workflow(
         upgrade_workflow,
+        extra_args=list(ctx.args),
         db_name=db_name,
         target_version=target_version,
         tests=tests,
@@ -175,8 +183,9 @@ def upgrade(
     )
 
 
-@app.command()
+@app.command(context_settings=ODOO_COMMAND_CONTEXT)
 def start(
+    ctx: typer.Context,
     db_name: str = typer.Argument(..., help="Odoo database name to start."),
     shell: bool = typer.Option(
         False,
@@ -190,7 +199,13 @@ def start(
     ),
 ) -> None:
     """Start an existing Odoo database using its inferred version."""
-    _run_workflow(start_workflow, db_name=db_name, shell=shell, debug=debug)
+    _run_workflow(
+        start_workflow,
+        extra_args=list(ctx.args),
+        db_name=db_name,
+        shell=shell,
+        debug=debug,
+    )
 
 
 @app.command()

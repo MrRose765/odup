@@ -42,7 +42,12 @@ def _log_environment_context(
 
 
 def createdb_workflow(
-    db_name: str, version: Optional[str], init: Optional[str], tests: bool, debug: bool
+    db_name: str,
+    version: Optional[str],
+    init: Optional[str],
+    tests: bool,
+    debug: bool,
+    extra_args: Optional[list[str]] = None,
 ) -> WorkflowOutcome:
     db_name = f"odup_{db_name}"
     logger.info("Creating Odoo database '%s' for version %s", db_name, version)
@@ -69,6 +74,8 @@ def createdb_workflow(
         )
         logger.info("Running upgrade prepare tests: %s", PREPARE_TESTS_TAG)
     args.extend(["--stop-after-init"])
+    if extra_args:
+        args.extend(extra_args)
 
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
@@ -86,7 +93,11 @@ def createdb_workflow(
 
 
 def upgrade_workflow(
-    db_name: str, target_version: str, tests: bool, debug: bool
+    db_name: str,
+    target_version: str,
+    tests: bool,
+    debug: bool,
+    extra_args: Optional[list[str]] = None,
 ) -> WorkflowOutcome:
     normalized_target_version = parse_version(target_version)
     upgraded_db_name = f"{db_name}_{normalized_target_version}"
@@ -116,6 +127,8 @@ def upgrade_workflow(
         "all",
         "--stop-after-init",
     ]
+    if extra_args:
+        args.extend(extra_args)
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     if exit_code != 0:
         return WorkflowOutcome(
@@ -134,6 +147,8 @@ def upgrade_workflow(
             CHECK_TESTS_TAG,
             "--stop",
         ]
+        if extra_args:
+            check_args.extend(extra_args)
         logger.info("Running upgrade check tests: %s", CHECK_TESTS_TAG)
         check_exit_code = run_odoo_command(
             venv_path, odoo_bin, check_args, addons_path, debug=debug
@@ -148,7 +163,9 @@ def upgrade_workflow(
     return WorkflowOutcome()
 
 
-def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
+def start_workflow(
+    db_name: str, shell: bool, debug: bool, extra_args: Optional[list[str]] = None
+) -> WorkflowOutcome:
     logger.info("Starting Odoo database '%s'", db_name)
 
     version = infer_version(db_name)
@@ -158,6 +175,8 @@ def start_workflow(db_name: str, shell: bool, debug: bool) -> WorkflowOutcome:
     _log_environment_context(odoo_bin, venv_path, addons_path)
 
     args = ["shell", "-d", db_name] if shell else ["-d", db_name]
+    if extra_args:
+        args.extend(extra_args)
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     return WorkflowOutcome(exit_code=exit_code)
 
