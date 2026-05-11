@@ -23,7 +23,7 @@ The sync step creates a local `.venv` with Typer and friends pinned in `uv.lock`
 - `createdb <DBNAME> -v VERSION -i <modules> [--tests] [--debug] [-- <odoo args...>]` - provision a fresh database for a given Odoo release. With `--tests`, runs `upgrade.test_prepare`.
 - `start DBNAME [--shell] [--debug] [-- <odoo args...>]` - start a database or launch shell mode.
 - `upgrade <DBNAME> <TARGET_VERSION> [--tests] [--debug] [-- <odoo args...>]` - upgrade the db into a copy named `DBNAME_TARGETVERSION`. With `--tests`, verifies prepare marker on source DB and runs `upgrade.test_check` on upgraded DB.
-- `env pull [VERSION]` - pull existing git checkouts found under `~/src/odoo`, `~/src/enterprise`, and `~/src/industry`. When VERSION is set, it is normalized (for example `19.2` -> `saas-19.2`) and only matching checkouts are pulled.
+- `env pull [VERSION] [--upgrade-only]` - pull existing git checkouts. By default, pulls all Odoo versions from `~/src/odoo`, `~/src/enterprise`, `~/src/industry` and all upgrade repos. When VERSION is set, pulls only that version from Odoo repos (for example `19.2` -> `saas-19.2`) plus upgrade repos. Use `--upgrade-only` to pull only upgrade-related repos (`upgrade-util`, `upgrade`, `upgrade-specific`).
 
 With `--debug`, starts with debugpy and waits for debugger attach on `localhost:5678`.
 Any extra arguments after `--` are forwarded to `odoo-bin` for the Odoo commands.

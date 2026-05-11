@@ -7,6 +7,7 @@ from typing import Optional
 from . import git_manager
 
 SOURCE_REPOSITORIES = ("odoo", "enterprise", "industry")
+UPGRADE_REPOSITORIES = ("upgrade-util", "upgrade", "upgrade-specific")
 logger = logging.getLogger(__name__)
 
 
@@ -22,39 +23,52 @@ def _format_failure(repository: Path, reason: str) -> str:
     return f"{_pull_label(repository)} has failed: {reason}"
 
 
-def discover_existing_sources(version: Optional[str] = None) -> list[Path]:
+def discover_existing_sources(
+    version: Optional[str] = None, upgrade_only: bool = False
+) -> list[Path]:
     src_root = _src_root()
     repositories: list[Path] = []
 
-    for repository_name in SOURCE_REPOSITORIES:
-        root = src_root / repository_name
-        if not root.exists():
-            continue
-        repositories.extend(
-            entry
-            for entry in root.iterdir()
-            if entry.is_dir()
-            and (entry / ".git").exists()
-            and (version is None or entry.name == version)
-        )
+    if not upgrade_only:
+        for repository_name in SOURCE_REPOSITORIES:
+            root = src_root / repository_name
+            if not root.exists():
+                continue
+            repositories.extend(
+                entry
+                for entry in root.iterdir()
+                if entry.is_dir()
+                and (entry / ".git").exists()
+                and (version is None or entry.name == version)
+            )
+
+    if upgrade_only or version is None:
+        for repository_name in UPGRADE_REPOSITORIES:
+            root = src_root / repository_name
+            if root.exists() and root.is_dir() and (root / ".git").exists():
+                repositories.append(root)
 
     return sorted(repositories)
 
 
 def pull_existing_sources(
-    version: Optional[str] = None, verbosity: int = 0
+    version: Optional[str] = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> list[str]:
     failures: list[str] = []
     git = git_manager.GitManager(verbosity=verbosity)
 
-    repositories = discover_existing_sources(version=version)
+    repositories = discover_existing_sources(version=version, upgrade_only=upgrade_only)
     if not repositories:
-        if version:
+        if upgrade_only:
+            logger.warning(
+                "No local git checkouts found under ~/src/{upgrade-util,upgrade,upgrade-specific}"
+            )
+        elif version:
             logger.warning("No local git checkouts found for version '%s'", version)
-            return failures
-        logger.warning(
-            "No local git checkouts found under ~/src/{odoo,enterprise,industry}"
-        )
+        else:
+            logger.warning(
+                "No local git checkouts found under ~/src/{odoo,enterprise,industry,upgrade-util,upgrade,upgrade-specific}"
+            )
         return failures
 
     for repository in repositories:
@@ -74,6 +88,13 @@ def pull_existing_sources(
             )
             failures.append(failure)
             continue
+
+        if repository.name in UPGRADE_REPOSITORIES and branch != "master":
+            logger.warning(
+                "%s is on branch '%s', not master; upgrade scripts may be out of date",
+                repository.name,
+                branch,
+            )
 
         if not git.has_upstream(repository):
             failure = _format_failure(

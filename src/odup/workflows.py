@@ -182,10 +182,12 @@ def start_workflow(
 
 
 def env_pull_workflow(
-    version: Optional[str] = None, verbosity: int = 0
+    version: Optional[str] = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> WorkflowOutcome:
     normalized_version = parse_version(version) if version else None
-    failures = pull_existing_sources(version=normalized_version, verbosity=verbosity)
+    failures = pull_existing_sources(
+        version=normalized_version, verbosity=verbosity, upgrade_only=upgrade_only
+    )
     if failures:
         report = "\n".join(f"- {failure}" for failure in failures)
         logger.error("Pull report:\n%s", report)

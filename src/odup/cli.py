@@ -108,11 +108,21 @@ def env_pull(
         count=True,
         help="Use -v for debug logs and -vv to also show git command output.",
     ),
+    upgrade_only: bool = typer.Option(
+        False,
+        "--upgrade-only",
+        help="Pull only upgrade-related repositories (upgrade-util, upgrade, upgrade-specific).",
+    ),
 ) -> None:
     """Pull existing local Odoo source checkouts."""
     if verbosity:
         logging.getLogger().setLevel(logging.DEBUG)
-    _run_workflow(env_pull_workflow, version=version, verbosity=verbosity)
+    _run_workflow(
+        env_pull_workflow,
+        version=version,
+        verbosity=verbosity,
+        upgrade_only=upgrade_only,
+    )
 
 
 @app.command(context_settings=ODOO_COMMAND_CONTEXT)
