@@ -9,6 +9,7 @@ import typer
 
 from .error import OdupError
 from .workflows import WorkflowOutcome
+from .workflows import clean_workflow
 from .workflows import createdb_workflow
 from .workflows import env_pull_workflow
 from .workflows import start_workflow
@@ -93,6 +94,18 @@ def _run_workflow(workflow, *args, **kwargs) -> None:
         # Let Typer/Click render unexpected exceptions (rich traceback when available).
         raise
     _exit_from_outcome(outcome)
+
+
+@app.command()
+def clean(
+    all_dbs: bool = typer.Option(
+        False,
+        "--all",
+        help="Delete all odup-managed databases, including originals.",
+    ),
+) -> None:
+    """Delete odup-managed databases. By default removes only upgraded databases (odup_<name>_<version>)."""
+    _run_workflow(clean_workflow, all_dbs=all_dbs)
 
 
 @env_app.command("pull")

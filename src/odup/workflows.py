@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .database import clone_database_from_template
 from .database import drop_if_exists
+from .database import list_databases
 from .env_manager import pull_existing_sources
 from .environment import find_odoo_environment
 from .odoo_utils import run_odoo_command
@@ -16,6 +18,10 @@ from .versioning import parse_version
 PREPARE_TESTS_TAG = "upgrade.test_prepare"
 CHECK_TESTS_TAG = "upgrade.test_check"
 logger = logging.getLogger(__name__)
+
+# Matches databases created by `upgrade_workflow`: odup_<name>_<version>
+_UPGRADED_DB_RE = re.compile(r"^odup_.+_(master|\d+\.\d+|saas-\d+\.\d+)$")
+_ALL_ODUP_DB_RE = re.compile(r"^odup_")
 
 
 @dataclass
@@ -180,6 +186,22 @@ def start_workflow(
         args.extend(extra_args)
     exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
     return WorkflowOutcome(exit_code=exit_code)
+
+
+def clean_workflow(all_dbs: bool) -> WorkflowOutcome:
+    pattern = _ALL_ODUP_DB_RE if all_dbs else _UPGRADED_DB_RE
+    to_delete = sorted(db for db in list_databases() if pattern.match(db))
+
+    if not to_delete:
+        logger.info("No matching databases found.")
+        return WorkflowOutcome()
+
+    for db in to_delete:
+        logger.info("Dropping '%s'", db)
+        drop_if_exists(db)
+
+    logger.info("Dropped %d database(s).", len(to_delete))
+    return WorkflowOutcome()
 
 
 def env_pull_workflow(
