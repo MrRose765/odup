@@ -143,11 +143,6 @@ def createdb(
         "--init",
         help="Comma-separated list of modules to install.",
     ),
-    tests: bool = typer.Option(
-        False,
-        "--tests",
-        help="Run upgrade preparation tests (upgrade.test_prepare).",
-    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -161,7 +156,6 @@ def createdb(
         db_name=db_name,
         version=version,
         init=init,
-        tests=tests,
         debug=debug,
     )
 
@@ -216,14 +210,6 @@ def start(
         shell=shell,
         debug=debug,
     )
-
-
-@app.command()
-def test(
-    scenario: str = typer.Argument(..., help="Ad-hoc test scenario to execute."),
-) -> None:
-    """Placeholder command for future testing helpers."""
-    logger.info("Would run scenario '%s'.", scenario)
 
 
 def main() -> None:

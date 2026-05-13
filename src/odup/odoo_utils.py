@@ -8,8 +8,6 @@ from typing import Optional
 
 from .database import clone_database_from_template
 from .database import drop_if_exists
-from .database import has_prepare_tests_marker
-from .database import set_prepare_tests_marker
 from .environment import _get_addons
 from .environment import find_odoo_environment
 from .error import DatabaseOperationError
@@ -60,12 +58,10 @@ __all__ = [
     "DatabaseOperationError",
     "drop_if_exists",
     "find_odoo_environment",
-    "has_prepare_tests_marker",
     "infer_version",
     "OdooCommandError",
     "OdooEnvironmentError",
     "parse_version",
     "run_odoo_command",
-    "set_prepare_tests_marker",
     "VersionDetectionError",
 ]

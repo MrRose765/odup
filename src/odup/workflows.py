@@ -7,11 +7,8 @@ from typing import Optional
 
 from .database import clone_database_from_template
 from .database import drop_if_exists
-from .database import has_prepare_tests_marker
-from .database import set_prepare_tests_marker
 from .env_manager import pull_existing_sources
 from .environment import find_odoo_environment
-from .error import OdupError
 from .odoo_utils import run_odoo_command
 from .versioning import infer_version
 from .versioning import parse_version
@@ -45,7 +42,6 @@ def createdb_workflow(
     db_name: str,
     version: Optional[str],
     init: Optional[str],
-    tests: bool,
     debug: bool,
     extra_args: Optional[list[str]] = None,
 ) -> WorkflowOutcome:
@@ -62,17 +58,6 @@ def createdb_workflow(
     if init:
         args.extend(["-i", init])
         logger.info("Installing modules: %s", init)
-    if tests:
-        args.extend(
-            [
-                "--upgrade-path",
-                _upgrade_path_value(),
-                "--test-enable",
-                "--test-tags",
-                PREPARE_TESTS_TAG,
-            ]
-        )
-        logger.info("Running upgrade prepare tests: %s", PREPARE_TESTS_TAG)
     args.extend(["--stop-after-init"])
     if extra_args:
         args.extend(extra_args)
@@ -84,12 +69,25 @@ def createdb_workflow(
             error_message=f"Failed to create Odoo database '{db_name}' (exit code: {exit_code})",
         )
 
-    if tests:
-        set_prepare_tests_marker(db_name, normalized_version)
-        logger.info("Stored prepare-tests marker in DB metadata table (odup_metadata).")
-
     logger.info("Successfully created Odoo database '%s'", db_name)
     return WorkflowOutcome()
+
+
+def _run_prepare_tests(db_name: str, debug: bool) -> int:
+    source_version = infer_version(db_name)
+    venv_path, odoo_bin, addons_path = find_odoo_environment(source_version)
+    args = [
+        "-d",
+        db_name,
+        "--upgrade-path",
+        _upgrade_path_value(),
+        "--test-enable",
+        "--test-tags",
+        PREPARE_TESTS_TAG,
+        "--stop-after-init",
+    ]
+    logger.info("Running upgrade prepare tests: %s", PREPARE_TESTS_TAG)
+    return run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
 
 
 def upgrade_workflow(
@@ -110,13 +108,16 @@ def upgrade_workflow(
 
     _log_environment_context(odoo_bin, venv_path, addons_path)
 
-    if tests and not has_prepare_tests_marker(db_name):
-        raise OdupError(
-            f"Source database '{db_name}' was not marked as prepared. Run 'odup createdb ... --tests' first."
-        )
-
     drop_if_exists(upgraded_db_name)
     clone_database_from_template(upgraded_db_name, db_name)
+
+    if tests:
+        prepare_exit_code = _run_prepare_tests(upgraded_db_name, debug)
+        if prepare_exit_code != 0:
+            return WorkflowOutcome(
+                exit_code=prepare_exit_code,
+                error_message=f"Upgrade prepare tests failed for '{upgraded_db_name}' (exit code: {prepare_exit_code})",
+            )
 
     args = [
         "-d",
