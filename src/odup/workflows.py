@@ -12,6 +12,7 @@ from .database import list_databases
 from .env_manager import pull_existing_sources
 from .environment import find_odoo_environment
 from .odoo_utils import run_odoo_command
+from .versioning import build_upgrade_chain
 from .versioning import infer_version
 from .versioning import parse_version
 
@@ -104,67 +105,80 @@ def upgrade_workflow(
     extra_args: Optional[list[str]] = None,
 ) -> WorkflowOutcome:
     normalized_target_version = parse_version(target_version)
-    upgraded_db_name = f"{db_name}_{normalized_target_version}"
-    logger.info("Source database: %s", db_name)
-    logger.info("Upgraded database: %s", upgraded_db_name)
-    logger.info("Target Odoo version: %s", normalized_target_version)
-    venv_path, odoo_bin, addons_path = find_odoo_environment(
-        normalized_target_version, add_industry=False
-    )
+    source_version = infer_version(db_name)
+    chain = build_upgrade_chain(source_version, normalized_target_version)
 
-    _log_environment_context(odoo_bin, venv_path, addons_path)
+    if not chain:
+        return WorkflowOutcome(
+            exit_code=1,
+            error_message=f"Source and target versions are the same: {source_version}",
+        )
+
+    upgraded_db_name = f"{db_name}_{normalized_target_version}"
+    logger.info("Source database: %s (%s)", db_name, source_version)
+    logger.info("Upgraded database: %s", upgraded_db_name)
+    logger.info("Upgrade chain: %s", " → ".join([source_version] + chain))
 
     drop_if_exists(upgraded_db_name)
     clone_database_from_template(upgraded_db_name, db_name)
 
-    if tests:
-        prepare_exit_code = _run_prepare_tests(upgraded_db_name, debug)
-        if prepare_exit_code != 0:
-            return WorkflowOutcome(
-                exit_code=prepare_exit_code,
-                error_message=f"Upgrade prepare tests failed for '{upgraded_db_name}' (exit code: {prepare_exit_code})",
-            )
-
-    args = [
-        "-d",
-        upgraded_db_name,
-        "--upgrade-path",
-        _upgrade_path_value(),
-        "-u",
-        "all",
-        "--stop-after-init",
-    ]
-    if extra_args:
-        args.extend(extra_args)
-    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
-    if exit_code != 0:
-        return WorkflowOutcome(
-            exit_code=exit_code,
-            error_message=f"Failed to upgrade database '{upgraded_db_name}' (exit code: {exit_code})",
+    for step_version in chain:
+        venv_path, odoo_bin, addons_path = find_odoo_environment(
+            step_version, add_industry=False
         )
+        _log_environment_context(odoo_bin, venv_path, addons_path)
 
-    if tests:
-        check_args = [
+        if tests:
+            prepare_exit_code = _run_prepare_tests(upgraded_db_name, debug)
+            if prepare_exit_code != 0:
+                return WorkflowOutcome(
+                    exit_code=prepare_exit_code,
+                    error_message=f"Upgrade prepare tests failed before {step_version} upgrade (exit code: {prepare_exit_code})",
+                )
+
+        logger.info("Upgrading %s to %s...", upgraded_db_name, step_version)
+        args = [
             "-d",
             upgraded_db_name,
             "--upgrade-path",
             _upgrade_path_value(),
-            "--test-enable",
-            "--test-tags",
-            CHECK_TESTS_TAG,
-            "--stop",
+            "-u",
+            "all",
+            "--stop-after-init",
         ]
         if extra_args:
-            check_args.extend(extra_args)
-        logger.info("Running upgrade check tests: %s", CHECK_TESTS_TAG)
-        check_exit_code = run_odoo_command(
-            venv_path, odoo_bin, check_args, addons_path, debug=debug
+            args.extend(extra_args)
+        exit_code = run_odoo_command(
+            venv_path, odoo_bin, args, addons_path, debug=debug
         )
-        if check_exit_code != 0:
+        if exit_code != 0:
             return WorkflowOutcome(
-                exit_code=check_exit_code,
-                error_message=f"Upgrade check failed for database '{upgraded_db_name}' (exit code: {check_exit_code})",
+                exit_code=exit_code,
+                error_message=f"Failed to upgrade to {step_version} (exit code: {exit_code})",
             )
+
+        if tests:
+            check_args = [
+                "-d",
+                upgraded_db_name,
+                "--upgrade-path",
+                _upgrade_path_value(),
+                "--test-enable",
+                "--test-tags",
+                CHECK_TESTS_TAG,
+                "--stop",
+            ]
+            if extra_args:
+                check_args.extend(extra_args)
+            logger.info("Running upgrade check tests: %s", CHECK_TESTS_TAG)
+            check_exit_code = run_odoo_command(
+                venv_path, odoo_bin, check_args, addons_path, debug=debug
+            )
+            if check_exit_code != 0:
+                return WorkflowOutcome(
+                    exit_code=check_exit_code,
+                    error_message=f"Upgrade check failed after {step_version} upgrade (exit code: {check_exit_code})",
+                )
 
     logger.info("Successfully upgraded database '%s'", upgraded_db_name)
     return WorkflowOutcome()

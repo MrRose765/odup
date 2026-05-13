@@ -7,6 +7,7 @@ import pytest
 
 from odup.error import VersionDetectionError
 from odup.versioning import _read_master_floor_from_release
+from odup.versioning import build_upgrade_chain
 from odup.versioning import parse_version
 
 
@@ -37,6 +38,54 @@ class TestReadMasterVersion:
         with patch("odup.versioning.Path.home", return_value=tmp_path):
             with pytest.raises(VersionDetectionError):
                 _read_master_floor_from_release()
+
+
+class TestBuildUpgradeChain:
+    def _patch_master(self, major: int):
+        return patch(
+            "odup.versioning._read_master_floor_from_release", return_value=(major, 0)
+        )
+
+    def test_single_major_step(self) -> None:
+        with self._patch_master(20):
+            assert build_upgrade_chain("16.0", "17.0") == ["17.0"]
+
+    def test_multi_major_steps(self) -> None:
+        with self._patch_master(20):
+            assert build_upgrade_chain("16.0", "19.0") == ["17.0", "18.0", "19.0"]
+
+    def test_saas_target_includes_major_first(self) -> None:
+        with self._patch_master(20):
+            assert build_upgrade_chain("16.0", "saas-19.2") == [
+                "17.0",
+                "18.0",
+                "19.0",
+                "saas-19.2",
+            ]
+
+    def test_saas_source_uses_its_major(self) -> None:
+        with self._patch_master(20):
+            assert build_upgrade_chain("saas-16.3", "19.0") == [
+                "17.0",
+                "18.0",
+                "19.0",
+            ]
+
+    def test_master_target_includes_major_then_master(self) -> None:
+        with self._patch_master(20):
+            assert build_upgrade_chain("16.0", "master") == [
+                "17.0",
+                "18.0",
+                "19.0",
+                "20.0",
+                "master",
+            ]
+
+    def test_same_version_returns_empty(self) -> None:
+        assert build_upgrade_chain("16.0", "16.0") == []
+
+    def test_same_major_different_minor(self) -> None:
+        assert build_upgrade_chain("saas-16.1", "saas-16.3") == ["saas-16.3"]
 
 
 class TestParseVersion:
