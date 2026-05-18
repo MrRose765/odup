@@ -3,9 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import psycopg2
 
-from .error import DatabaseOperationError
+from .database import query_version
 from .error import VersionDetectionError
 
 
@@ -102,24 +101,7 @@ def build_upgrade_chain(source_version: str, target_version: str) -> list[str]:
 
 
 def infer_version(db_name: str) -> str:
-    conn = None
-    curr = None
-    try:
-        conn = psycopg2.connect(
-            dbname=db_name,
-            user="odoo",
-        )
-        curr = conn.cursor()
-        version = _query_version(curr)
-    except psycopg2.Error as exc:
-        raise DatabaseOperationError(
-            f"Could not query database '{db_name}' for Odoo version: {exc}"
-        ) from exc
-    finally:
-        if curr:
-            curr.close()
-        if conn:
-            conn.close()
+    version = query_version(db_name)
 
     if not version:
         raise VersionDetectionError(
