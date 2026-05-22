@@ -4,18 +4,23 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
-from .database import clone_database_from_template
-from .database import drop_if_exists
-from .database import list_databases
-from .env_manager import add_version_environment
-from .env_manager import pull_existing_sources
-from .environment import find_odoo_environment
-from .utils import run_odoo_command
-from .versioning import build_upgrade_chain
-from .versioning import infer_version
-from .versioning import parse_version
+from .database import (
+    clone_database_from_template,
+    drop_if_exists,
+    list_databases,
+)
+from .environment import (
+    add_version_environment,
+    find_odoo_environment,
+    pull_existing_sources,
+)
+from .utils import run_odoo_command, SRC_ROOT
+from .versioning import (
+    build_upgrade_chain,
+    infer_version,
+    parse_version,
+)
 
 PREPARE_TESTS_TAG = "upgrade.test_prepare"
 CHECK_TESTS_TAG = "upgrade.test_check"
@@ -29,16 +34,16 @@ _ALL_ODUP_DB_RE = re.compile(r"^odup_")
 @dataclass
 class WorkflowOutcome:
     exit_code: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
-def _upgrade_path_value() -> str:
-    home = Path.home()
-    return f"{(home / 'src' / 'upgrade-util' / 'src')},{(home / 'src' / 'upgrade' / 'migrations')}"
+_UPGRADE_PATH = (
+    f"{SRC_ROOT / 'upgrade-util' / 'src'},{SRC_ROOT / 'upgrade' / 'migrations'}"
+)
 
 
 def _log_environment_context(
-    odoo_bin: Path, venv_path: Path, addons_path: Optional[str]
+    venv_path: Path, odoo_bin: Path, addons_path: str | None
 ) -> None:
     logger.debug("Using odoo-bin: %s", odoo_bin)
     logger.debug("Using virtual environment: %s", venv_path)
@@ -48,10 +53,10 @@ def _log_environment_context(
 
 def createdb_workflow(
     db_name: str,
-    version: Optional[str],
-    init: Optional[str],
+    version: str | None,
+    init: str | None,
     debug: bool,
-    extra_args: Optional[list[str]] = None,
+    extra_args: list[str] | None = None,
 ) -> WorkflowOutcome:
     db_name = f"odup_{db_name}"
     logger.info("Creating Odoo database '%s' for version %s", db_name, version)
@@ -60,7 +65,7 @@ def createdb_workflow(
     normalized_version = parse_version(version or "master")
     logger.debug("Normalized Odoo version: %s", normalized_version)
     venv_path, odoo_bin, addons_path = find_odoo_environment(normalized_version)
-    _log_environment_context(odoo_bin, venv_path, addons_path)
+    _log_environment_context(venv_path, odoo_bin, addons_path)
 
     args = ["-d", db_name]
     if init:
@@ -88,7 +93,7 @@ def _run_prepare_tests(db_name: str, debug: bool) -> int:
         "-d",
         db_name,
         "--upgrade-path",
-        _upgrade_path_value(),
+        _UPGRADE_PATH,
         "--test-enable",
         "--test-tags",
         PREPARE_TESTS_TAG,
@@ -103,7 +108,7 @@ def upgrade_workflow(
     target_version: str,
     tests: bool,
     debug: bool,
-    extra_args: Optional[list[str]] = None,
+    extra_args: list[str] | None = None,
 ) -> WorkflowOutcome:
     normalized_target_version = parse_version(target_version)
     source_version = infer_version(db_name)
@@ -127,7 +132,7 @@ def upgrade_workflow(
         venv_path, odoo_bin, addons_path = find_odoo_environment(
             step_version, add_industry=False
         )
-        _log_environment_context(odoo_bin, venv_path, addons_path)
+        _log_environment_context(venv_path, odoo_bin, addons_path)
 
         if tests:
             prepare_exit_code = _run_prepare_tests(upgraded_db_name, debug)
@@ -142,7 +147,7 @@ def upgrade_workflow(
             "-d",
             upgraded_db_name,
             "--upgrade-path",
-            _upgrade_path_value(),
+            _UPGRADE_PATH,
             "-u",
             "all",
             "--stop-after-init",
@@ -163,7 +168,7 @@ def upgrade_workflow(
                 "-d",
                 upgraded_db_name,
                 "--upgrade-path",
-                _upgrade_path_value(),
+                _UPGRADE_PATH,
                 "--test-enable",
                 "--test-tags",
                 CHECK_TESTS_TAG,
@@ -186,7 +191,7 @@ def upgrade_workflow(
 
 
 def start_workflow(
-    db_name: str, shell: bool, debug: bool, extra_args: Optional[list[str]] = None
+    db_name: str, shell: bool, debug: bool, extra_args: list[str] | None = None
 ) -> WorkflowOutcome:
     logger.info("Starting Odoo database '%s'", db_name)
 
@@ -194,7 +199,7 @@ def start_workflow(
     venv_path, odoo_bin, addons_path = find_odoo_environment(version)
 
     logger.info("Inferred Odoo version: %s", version)
-    _log_environment_context(odoo_bin, venv_path, addons_path)
+    _log_environment_context(venv_path, odoo_bin, addons_path)
 
     args = ["shell", "-d", db_name] if shell else ["-d", db_name]
     if extra_args:
@@ -227,7 +232,7 @@ def env_add_workflow(version: str) -> WorkflowOutcome:
 
 
 def env_pull_workflow(
-    version: Optional[str] = None, verbosity: int = 0, upgrade_only: bool = False
+    version: str | None = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> WorkflowOutcome:
     normalized_version = parse_version(version) if version else None
     failures = pull_existing_sources(

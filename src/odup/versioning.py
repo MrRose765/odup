@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 
 from .database import query_version
 from .error import VersionDetectionError
+from .utils import SRC_ROOT
 
 
 def _read_release_py(version: str, pattern: str) -> re.Match:
-    release_py = Path.home() / "src" / "odoo" / version / "odoo" / "release.py"
+    release_py = SRC_ROOT / "odoo" / version / "odoo" / "release.py"
     try:
         content = release_py.read_text(encoding="utf-8")
     except OSError:
@@ -30,13 +30,6 @@ def read_min_python_version(version: str) -> str:
 def _read_master_floor_from_release() -> tuple[int, int]:
     match = _read_release_py("master", r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,")
     return int(match.group(1)), int(match.group(2))
-
-
-def _query_version(cursor):
-    query = "SELECT latest_version FROM ir_module_module WHERE name='base';"
-    cursor.execute(query)
-    res = cursor.fetchone()
-    return res[0] if res else None
 
 
 def parse_version(version_str: str) -> str:

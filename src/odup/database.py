@@ -62,13 +62,10 @@ def clone_database_from_template(dbname: str, template_db: str) -> None:
 
 def query_version(dbname: str) -> str:
     try:
-        with psycopg2.connect(dbname=dbname, user="odoo") as conn:
-            with conn.cursor() as curr:
-                curr.execute(
-                    "SELECT latest_version FROM ir_module_module WHERE name='base';"
-                )
-                res = curr.fetchone()
-                return res[0] if res else None
+        with _pg_cursor() as curr:
+            curr.execute(
+                "SELECT latest_version FROM ir_module_module WHERE name='base';"
+            )
     except psycopg2.Error as exc:
         raise DatabaseOperationError(
             f"Could not query database '{dbname}' for Odoo version: {exc}"

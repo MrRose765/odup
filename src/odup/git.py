@@ -62,9 +62,6 @@ class GitManager:
             cwd,
         )
 
-    def is_on_master(self, cwd: Path) -> bool:
-        return self.current_branch(cwd) == "master"
-
     def has_upstream(self, cwd: Path) -> bool:
         try:
             self._run(

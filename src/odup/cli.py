@@ -3,18 +3,17 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Optional
-
 import typer
 
 from .error import OdupError
-from .workflows import WorkflowOutcome
-from .workflows import clean_workflow
-from .workflows import createdb_workflow
-from .workflows import env_add_workflow
-from .workflows import env_pull_workflow
-from .workflows import start_workflow
-from .workflows import upgrade_workflow
+from .workflows import (
+    clean_workflow,
+    createdb_workflow,
+    env_add_workflow,
+    env_pull_workflow,
+    start_workflow,
+    upgrade_workflow,
+)
 
 app = typer.Typer(
     help="Local helpers for prototyping Odoo upgrade workflows.",
@@ -73,22 +72,23 @@ def _configure_logging() -> None:
     root_logger.addHandler(handler)
 
 
-def _exit_from_outcome(outcome: WorkflowOutcome) -> None:
-    if outcome.exit_code != 0:
-        if outcome.error_message:
-            logger.error(outcome.error_message)
-        raise typer.Exit(outcome.exit_code)
-
-
 def _run_workflow(workflow, *args, **kwargs) -> None:
     try:
         outcome = workflow(*args, **kwargs)
     except OdupError as exc:
         logger.error(exc)
         raise typer.Exit(1)
-    except Exception:
-        raise
-    _exit_from_outcome(outcome)
+    if outcome.exit_code != 0:
+        if outcome.error_message:
+            logger.error(outcome.error_message)
+        raise typer.Exit(outcome.exit_code)
+
+
+##############################################################
+#
+#                       MAIN APP COMMANDS
+#
+##############################################################
 
 
 @app.command()
@@ -113,49 +113,19 @@ def env_add(
     _run_workflow(env_add_workflow, version=version)
 
 
-@env_app.command("pull")
-def env_pull(
-    version: Optional[str] = typer.Argument(
-        None,
-        help="Optional version to pull (for example: 16.0, saas-16.3, master). If omitted, pulls every local checkout.",
-    ),
-    verbosity: int = typer.Option(
-        0,
-        "-v",
-        "--verbose",
-        count=True,
-        help="Use -v for debug logs and -vv to also show git command output.",
-    ),
-    upgrade_only: bool = typer.Option(
-        False,
-        "--upgrade-only",
-        help="Pull only upgrade-related repositories (upgrade-util, upgrade, upgrade-specific).",
-    ),
-) -> None:
-    """Pull existing local Odoo source checkouts."""
-    if verbosity:
-        logging.getLogger().setLevel(logging.DEBUG)
-    _run_workflow(
-        env_pull_workflow,
-        version=version,
-        verbosity=verbosity,
-        upgrade_only=upgrade_only,
-    )
-
-
 @app.command(context_settings=ODOO_COMMAND_CONTEXT)
 def createdb(
     ctx: typer.Context,
     db_name: str = typer.Argument(
         ..., help="Odoo database name to create. (Will be prefixed with 'odup_')"
     ),
-    version: Optional[str] = typer.Option(
+    version: str | None = typer.Option(
         "master",
         "-v",
         "--version",
         help="Odoo version to bootstrap (default: master).",
     ),
-    init: Optional[str] = typer.Option(
+    init: str | None = typer.Option(
         None,
         "-i",
         "--init",
@@ -227,6 +197,43 @@ def start(
         db_name=db_name,
         shell=shell,
         debug=debug,
+    )
+
+
+#####################################################################
+#
+#                       ENV APP COMMANDS
+#
+#####################################################################
+
+
+@env_app.command("pull")
+def env_pull(
+    version: str | None = typer.Argument(
+        None,
+        help="Optional version to pull (for example: 16.0, saas-16.3, master). If omitted, pulls every local checkout.",
+    ),
+    verbosity: int = typer.Option(
+        0,
+        "-v",
+        "--verbose",
+        count=True,
+        help="Use -v for debug logs and -vv to also show git command output.",
+    ),
+    upgrade_only: bool = typer.Option(
+        False,
+        "--upgrade-only",
+        help="Pull only upgrade-related repositories (upgrade-util, upgrade, upgrade-specific).",
+    ),
+) -> None:
+    """Pull existing local Odoo source checkouts."""
+    if verbosity:
+        logging.getLogger().setLevel(logging.DEBUG)
+    _run_workflow(
+        env_pull_workflow,
+        version=version,
+        verbosity=verbosity,
+        upgrade_only=upgrade_only,
     )
 
 

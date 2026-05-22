@@ -4,18 +4,19 @@ import logging
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from .error import OdooCommandError, OdupError
 
 logger = logging.getLogger(__name__)
+
+SRC_ROOT = Path.home() / "src"
 
 
 def run_odoo_command(
     venv_path: Path,
     odoo_bin: Path,
     args: list[str],
-    addons_path: Optional[str] = None,
+    addons_path: str | None = None,
     debug: bool = False,
 ) -> int:
     python_exe = venv_path / "bin" / "python"
@@ -39,10 +40,6 @@ def run_odoo_command(
         return result.returncode
     except OSError as exc:
         raise OdooCommandError(f"Failed to run odoo-bin: {exc}") from exc
-
-
-def src_root() -> Path:
-    return Path.home() / "src"
 
 
 def run_uv(args: list[str], cwd: Path) -> None:

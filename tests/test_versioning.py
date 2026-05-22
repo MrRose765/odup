@@ -20,11 +20,11 @@ class TestReadReleasePy:
 
     def test_read_master_floor_from_release(self, tmp_path: Path) -> None:
         self._write(tmp_path, "master", "version_info = (17, 0, 0, 'final', 0)\n")
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             assert _read_master_floor_from_release() == (17, 0)
 
     def test_read_master_floor_from_release__missing_file(self, tmp_path: Path) -> None:
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
                 _read_master_floor_from_release()
 
@@ -32,23 +32,23 @@ class TestReadReleasePy:
         self, tmp_path: Path
     ) -> None:
         self._write(tmp_path, "master", "# no version info\n")
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
                 _read_master_floor_from_release()
 
     def test_read_min_python_version(self, tmp_path: Path) -> None:
         self._write(tmp_path, "17.0", "MIN_PY_VERSION = (3, 10)\n")
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             assert read_min_python_version("17.0") == "3.10"
 
     def test_read_min_python_version__missing_file(self, tmp_path: Path) -> None:
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
                 read_min_python_version("17.0")
 
     def test_read_min_python_version__missing_pattern(self, tmp_path: Path) -> None:
         self._write(tmp_path, "17.0", "# no MIN_PY_VERSION here\n")
-        with patch("odup.versioning.Path.home", return_value=tmp_path):
+        with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
                 read_min_python_version("17.0")
 

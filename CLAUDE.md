@@ -33,8 +33,7 @@ The tool is built with **Typer** (CLI framework) and uses **psycopg2** for datab
 - `environment.py`: Locates and validates Odoo installations (checks venv, odoo-bin, addon paths)
 - `versioning.py`: Parses version strings into normalized forms (master, saas-X.Y, X.0)
 - `database.py`: PostgreSQL operations (drop, clone, metadata markers)
-- `git_manager.py`: Git operations (pull, stash, branch detection) used by `env pull`
-- `env_manager.py`: Discovers and pulls source repositories (Odoo repos and upgrade repos)
+- `git.py`: Git operations (pull, stash, branch detection) used by `env pull`
 - `error.py`: Exception hierarchy rooted in `OdupError` for expected failures
 
 ### Workflow Model
@@ -68,7 +67,7 @@ Each workflow:
 
 ### Source Repository Model
 
-The `env_manager.py` module manages two categories of repositories:
+The `environment.py` module manages two categories of repositories:
 
 **Odoo Repositories** (version-specific): `odoo`, `enterprise`, `industry`
 - Discovered under `~/src/<repo>/<version>/` (e.g., `~/src/odoo/16.0/`)
@@ -162,7 +161,7 @@ src/odup/
 ├── environment.py      # Odoo path detection
 ├── versioning.py       # Version parsing and normalization
 ├── database.py         # PostgreSQL operations
-├── git_manager.py      # Git wrapper
+├── git.py      # Git wrapper
 ├── error.py            # Exception classes
 └── utils.py            # Subprocess utilities
 
@@ -170,7 +169,7 @@ tests/
 ├── test_cli.py         # CLI argument handling
 ├── test_versioning.py  # Version parsing tests
 ├── test_environment.py # Environment discovery tests
-└── test_env_manager.py # Git operations tests
+└── test_environment.py # Git operations tests
 ```
 
 ## Code Style Guidelines
