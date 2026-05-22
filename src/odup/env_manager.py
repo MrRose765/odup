@@ -5,14 +5,48 @@ from pathlib import Path
 from typing import Optional
 
 from . import git_manager
+from .versioning import read_min_python_version
+from .utils import src_root, run_uv
 
 SOURCE_REPOSITORIES = ("odoo", "enterprise", "industry")
 UPGRADE_REPOSITORIES = ("upgrade-util", "upgrade", "upgrade-specific")
+_WORKTREE_REPOS = ("odoo", "enterprise")
 logger = logging.getLogger(__name__)
 
 
-def _src_root() -> Path:
-    return Path.home() / "src"
+def add_version_environment(version: str) -> None:
+    git = git_manager.GitManager()
+
+    for repo_name in _WORKTREE_REPOS:
+        dest = src_root() / repo_name / version
+        if dest.exists():
+            logger.info("%s/%s already exists, skipping worktree", repo_name, version)
+            continue
+        master = src_root() / repo_name / "master"
+        logger.info("Creating worktree %s/%s", repo_name, version)
+        git.add_worktree(master, dest, version)
+
+    odoo_dir = src_root() / "odoo" / version
+    python_version = read_min_python_version(version)
+    logger.debug("Minimum Python version from release.py: %s", python_version)
+
+    venv_path = odoo_dir / ".venv"
+    if venv_path.exists():
+        logger.info("Virtual environment already exists, skipping creation")
+    else:
+        logger.info("Creating virtual environment (Python %s)", python_version)
+        run_uv(["venv", ".venv", "--python", python_version], cwd=odoo_dir)
+
+    logger.info("Installing requirements.txt")
+    run_uv(
+        ["pip", "install", "-r", "requirements.txt", "--python", ".venv/bin/python"],
+        cwd=odoo_dir,
+    )
+
+    logger.info("Installing extras (debugpy, jwt)")
+    run_uv(["pip", "install", "debugpy", "jwt"], cwd=odoo_dir)
+
+    logger.info("Environment for %s is ready", version)
 
 
 def _pull_label(repository: Path) -> str:
@@ -26,12 +60,12 @@ def _format_failure(repository: Path, reason: str) -> str:
 def discover_existing_sources(
     version: Optional[str] = None, upgrade_only: bool = False
 ) -> list[Path]:
-    src_root = _src_root()
+    src_folder = src_root()
     repositories: list[Path] = []
 
     if not upgrade_only:
         for repository_name in SOURCE_REPOSITORIES:
-            root = src_root / repository_name
+            root = src_folder / repository_name
             if not root.exists():
                 continue
             repositories.extend(
@@ -44,7 +78,7 @@ def discover_existing_sources(
 
     if upgrade_only or version is None:
         for repository_name in UPGRADE_REPOSITORIES:
-            root = src_root / repository_name
+            root = src_folder / repository_name
             if root.exists() and root.is_dir() and (root / ".git").exists():
                 repositories.append(root)
 

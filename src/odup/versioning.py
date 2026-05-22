@@ -8,22 +8,27 @@ from .database import query_version
 from .error import VersionDetectionError
 
 
-def _read_master_floor_from_release() -> tuple[int, int]:
-    release_py = Path.home() / "src" / "odoo" / "master" / "odoo" / "release.py"
-
+def _read_release_py(version: str, pattern: str) -> re.Match:
+    release_py = Path.home() / "src" / "odoo" / version / "odoo" / "release.py"
     try:
         content = release_py.read_text(encoding="utf-8")
     except OSError:
-        raise VersionDetectionError(
-            f"Could not read release.py to determine master floor version. Expected at {release_py}"
-        )
-
-    match = re.search(r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,", content)
+        raise VersionDetectionError(f"Could not read release.py at {release_py}")
+    match = re.search(pattern, content)
     if not match:
-        raise VersionDetectionError(
-            f"Could not find version_info in release.py. Expected at {release_py}"
-        )
+        raise VersionDetectionError(f"Pattern {pattern!r} not found in {release_py}")
+    return match
 
+
+def read_min_python_version(version: str) -> str:
+    match = _read_release_py(
+        version, r"MIN_PY_VERSION\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)"
+    )
+    return f"{match.group(1)}.{match.group(2)}"
+
+
+def _read_master_floor_from_release() -> tuple[int, int]:
+    match = _read_release_py("master", r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,")
     return int(match.group(1)), int(match.group(2))
 
 

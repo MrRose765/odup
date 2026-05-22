@@ -94,3 +94,10 @@ class GitManager:
 
     def stash_pop(self, cwd: Path) -> None:
         self._run(["git", "stash", "pop"], cwd, echo_output=True)
+
+    def add_worktree(self, cwd: Path, dest: Path, branch: str) -> None:
+        self._run(
+            ["git", "worktree", "add", str(dest), branch],
+            cwd,
+            echo_output=True,
+        )

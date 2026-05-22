@@ -9,19 +9,17 @@ from odup.error import VersionDetectionError
 from odup.versioning import _read_master_floor_from_release
 from odup.versioning import build_upgrade_chain
 from odup.versioning import parse_version
+from odup.versioning import read_min_python_version
 
 
-def _write_master_release_file(base: Path, content: str) -> Path:
-    release_py = base / "src" / "odoo" / "master" / "odoo" / "release.py"
-    release_py.parent.mkdir(parents=True, exist_ok=True)
-    release_py.write_text(content, encoding="utf-8")
-    return release_py
+class TestReadReleasePy:
+    def _write(self, base: Path, version: str, content: str) -> None:
+        release_py = base / "src" / "odoo" / version / "odoo" / "release.py"
+        release_py.parent.mkdir(parents=True, exist_ok=True)
+        release_py.write_text(content, encoding="utf-8")
 
-
-class TestReadMasterVersion:
-    def test_read_master_floor_from_release__success(self, tmp_path: Path) -> None:
-        _write_master_release_file(tmp_path, "version_info = (17, 0, 0, 'final', 0)\n")
-
+    def test_read_master_floor_from_release(self, tmp_path: Path) -> None:
+        self._write(tmp_path, "master", "version_info = (17, 0, 0, 'final', 0)\n")
         with patch("odup.versioning.Path.home", return_value=tmp_path):
             assert _read_master_floor_from_release() == (17, 0)
 
@@ -30,14 +28,29 @@ class TestReadMasterVersion:
             with pytest.raises(VersionDetectionError):
                 _read_master_floor_from_release()
 
-    def test_read_master_floor_from_release__missing_version_info(
+    def test_read_master_floor_from_release__missing_pattern(
         self, tmp_path: Path
     ) -> None:
-        _write_master_release_file(tmp_path, "# no version info\n")
-
+        self._write(tmp_path, "master", "# no version info\n")
         with patch("odup.versioning.Path.home", return_value=tmp_path):
             with pytest.raises(VersionDetectionError):
                 _read_master_floor_from_release()
+
+    def test_read_min_python_version(self, tmp_path: Path) -> None:
+        self._write(tmp_path, "17.0", "MIN_PY_VERSION = (3, 10)\n")
+        with patch("odup.versioning.Path.home", return_value=tmp_path):
+            assert read_min_python_version("17.0") == "3.10"
+
+    def test_read_min_python_version__missing_file(self, tmp_path: Path) -> None:
+        with patch("odup.versioning.Path.home", return_value=tmp_path):
+            with pytest.raises(VersionDetectionError):
+                read_min_python_version("17.0")
+
+    def test_read_min_python_version__missing_pattern(self, tmp_path: Path) -> None:
+        self._write(tmp_path, "17.0", "# no MIN_PY_VERSION here\n")
+        with patch("odup.versioning.Path.home", return_value=tmp_path):
+            with pytest.raises(VersionDetectionError):
+                read_min_python_version("17.0")
 
 
 class TestBuildUpgradeChain:

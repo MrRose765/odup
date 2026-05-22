@@ -9,9 +9,10 @@ from typing import Optional
 from .database import clone_database_from_template
 from .database import drop_if_exists
 from .database import list_databases
+from .env_manager import add_version_environment
 from .env_manager import pull_existing_sources
 from .environment import find_odoo_environment
-from .odoo_utils import run_odoo_command
+from .utils import run_odoo_command
 from .versioning import build_upgrade_chain
 from .versioning import infer_version
 from .versioning import parse_version
@@ -215,6 +216,13 @@ def clean_workflow(all_dbs: bool) -> WorkflowOutcome:
         drop_if_exists(db)
 
     logger.info("Dropped %d database(s).", len(to_delete))
+    return WorkflowOutcome()
+
+
+def env_add_workflow(version: str) -> WorkflowOutcome:
+    normalized_version = parse_version(version)
+    logger.info("Setting up environment for Odoo %s", normalized_version)
+    add_version_environment(normalized_version)
     return WorkflowOutcome()
 
 

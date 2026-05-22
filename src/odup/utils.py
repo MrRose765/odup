@@ -6,17 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .database import clone_database_from_template
-from .database import drop_if_exists
-from .environment import _get_addons
-from .environment import find_odoo_environment
-from .error import DatabaseOperationError
-from .error import OdooCommandError
-from .error import OdooEnvironmentError
-from .error import VersionDetectionError
-from .versioning import infer_version
-from .versioning import _read_master_floor_from_release
-from .versioning import parse_version
+from .error import OdooCommandError, OdupError
 
 logger = logging.getLogger(__name__)
 
@@ -51,17 +41,11 @@ def run_odoo_command(
         raise OdooCommandError(f"Failed to run odoo-bin: {exc}") from exc
 
 
-__all__ = [
-    "_get_addons",
-    "_read_master_floor_from_release",
-    "clone_database_from_template",
-    "DatabaseOperationError",
-    "drop_if_exists",
-    "find_odoo_environment",
-    "infer_version",
-    "OdooCommandError",
-    "OdooEnvironmentError",
-    "parse_version",
-    "run_odoo_command",
-    "VersionDetectionError",
-]
+def src_root() -> Path:
+    return Path.home() / "src"
+
+
+def run_uv(args: list[str], cwd: Path) -> None:
+    result = subprocess.run(["uv", *args], cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise OdupError(f"Command failed: uv {' '.join(args)}\n{result.stderr.strip()}")

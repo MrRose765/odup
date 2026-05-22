@@ -164,7 +164,7 @@ src/odup/
 ├── database.py         # PostgreSQL operations
 ├── git_manager.py      # Git wrapper
 ├── error.py            # Exception classes
-└── odoo_utils.py       # Shared Odoo subprocess utilities
+└── utils.py            # Subprocess utilities
 
 tests/
 ├── test_cli.py         # CLI argument handling

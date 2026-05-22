@@ -14,6 +14,79 @@ def _create_worktree(base: Path, repository: str, version: str) -> Path:
     return worktree
 
 
+class TestAddVersionEnvironment:
+    class FakeGitManager:
+        def __init__(self, **kwargs) -> None:
+            self.worktrees_added: list[tuple[Path, Path, str]] = []
+
+        def add_worktree(self, cwd: Path, dest: Path, branch: str) -> None:
+            self.worktrees_added.append((cwd, dest, branch))
+
+    def _run(self, tmp_path: Path, version: str, venv_exists: bool = False):
+        if venv_exists:
+            (tmp_path / "src" / "odoo" / version / ".venv").mkdir(parents=True)
+
+        git_instance = None
+
+        def capture_git(*args, **kwargs):
+            nonlocal git_instance
+            git_instance = self.FakeGitManager()
+            return git_instance
+
+        uv_calls: list[list[str]] = []
+
+        with (
+            patch("odup.env_manager.Path.home", return_value=tmp_path),
+            patch("odup.env_manager.git_manager.GitManager", side_effect=capture_git),
+            patch("odup.env_manager.read_min_python_version", return_value="3.10"),
+            patch(
+                "odup.env_manager.run_uv",
+                side_effect=lambda args, cwd: uv_calls.append(args),
+            ),
+        ):
+            env_manager.add_version_environment(version)
+
+        return git_instance, uv_calls
+
+    def test_creates_worktrees_for_both_repos(self, tmp_path: Path) -> None:
+        git, _ = self._run(tmp_path, "17.0")
+
+        assert len(git.worktrees_added) == 2
+        assert git.worktrees_added[0] == (
+            tmp_path / "src" / "odoo" / "master",
+            tmp_path / "src" / "odoo" / "17.0",
+            "17.0",
+        )
+        assert git.worktrees_added[1] == (
+            tmp_path / "src" / "enterprise" / "master",
+            tmp_path / "src" / "enterprise" / "17.0",
+            "17.0",
+        )
+
+    def test_skips_existing_worktree(self, tmp_path: Path) -> None:
+        (tmp_path / "src" / "enterprise" / "17.0").mkdir(parents=True)
+        git, _ = self._run(tmp_path, "17.0")
+
+        assert len(git.worktrees_added) == 1
+        assert git.worktrees_added[0][1] == tmp_path / "src" / "odoo" / "17.0"
+
+    def test_creates_venv_when_missing(self, tmp_path: Path) -> None:
+        _, uv_calls = self._run(tmp_path, "17.0", venv_exists=False)
+
+        assert ["venv", ".venv", "--python", "3.10"] in uv_calls
+
+    def test_skips_venv_when_exists(self, tmp_path: Path) -> None:
+        _, uv_calls = self._run(tmp_path, "17.0", venv_exists=True)
+
+        assert not any(call[0] == "venv" for call in uv_calls)
+
+    def test_always_installs_requirements_and_extras(self, tmp_path: Path) -> None:
+        _, uv_calls = self._run(tmp_path, "17.0")
+
+        assert ["run", "pip", "install", "-r", "requirements.txt"] in uv_calls
+        assert ["pip", "install", "debugpy", "jwt"] in uv_calls
+
+
 class TestDiscoverExistingSources:
     def test_discover_existing_sources(self, tmp_path: Path) -> None:
         _create_worktree(tmp_path, "odoo", "16.0")

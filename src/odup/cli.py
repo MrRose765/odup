@@ -11,6 +11,7 @@ from .error import OdupError
 from .workflows import WorkflowOutcome
 from .workflows import clean_workflow
 from .workflows import createdb_workflow
+from .workflows import env_add_workflow
 from .workflows import env_pull_workflow
 from .workflows import start_workflow
 from .workflows import upgrade_workflow
@@ -72,12 +73,6 @@ def _configure_logging() -> None:
     root_logger.addHandler(handler)
 
 
-def _handle_error(exc: OdupError) -> None:
-    """Render expected domain errors consistently and exit with code 1."""
-    logger.error(exc)
-    raise typer.Exit(1)
-
-
 def _exit_from_outcome(outcome: WorkflowOutcome) -> None:
     if outcome.exit_code != 0:
         if outcome.error_message:
@@ -89,9 +84,9 @@ def _run_workflow(workflow, *args, **kwargs) -> None:
     try:
         outcome = workflow(*args, **kwargs)
     except OdupError as exc:
-        _handle_error(exc)
+        logger.error(exc)
+        raise typer.Exit(1)
     except Exception:
-        # Let Typer/Click render unexpected exceptions (rich traceback when available).
         raise
     _exit_from_outcome(outcome)
 
@@ -106,6 +101,16 @@ def clean(
 ) -> None:
     """Delete odup-managed databases. By default removes only upgraded databases (odup_<name>_<version>)."""
     _run_workflow(clean_workflow, all_dbs=all_dbs)
+
+
+@env_app.command("add")
+def env_add(
+    version: str = typer.Argument(
+        ..., help="Odoo version to add (e.g. 17.0, saas-16.3, master)."
+    ),
+) -> None:
+    """Add a new Odoo version: create worktrees for odoo and enterprise, set up venv, and install dependencies."""
+    _run_workflow(env_add_workflow, version=version)
 
 
 @env_app.command("pull")
