@@ -11,8 +11,10 @@ from .error import DatabaseOperationError
 
 
 @contextmanager
-def _pg_cursor(autocommit: bool = False) -> Iterator[PgCursor]:
-    conn = psycopg2.connect(dbname="postgres", user="odoo")
+def _pg_cursor(
+    dbname: str = "postgres", autocommit: bool = False
+) -> Iterator[PgCursor]:
+    conn = psycopg2.connect(dbname=dbname, user="odoo")
     try:
         conn.autocommit = autocommit
         curr = conn.cursor()
@@ -62,10 +64,12 @@ def clone_database_from_template(dbname: str, template_db: str) -> None:
 
 def query_version(dbname: str) -> str:
     try:
-        with _pg_cursor() as curr:
+        with _pg_cursor(dbname=dbname) as curr:
             curr.execute(
                 "SELECT latest_version FROM ir_module_module WHERE name='base';"
             )
+            result = curr.fetchone()
+            return result[0] if result else ""
     except psycopg2.Error as exc:
         raise DatabaseOperationError(
             f"Could not query database '{dbname}' for Odoo version: {exc}"
