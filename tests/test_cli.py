@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from click.testing import CliRunner
-from typer.main import get_command
+from typer.testing import CliRunner
 
 from odup.cli import app
 from odup.workflows import WorkflowOutcome
@@ -12,12 +11,11 @@ from odup.workflows import WorkflowOutcome
 class TestOdooCommandPassthrough:
     def test_createdb_passes_extra_args(self) -> None:
         runner = CliRunner()
-        command = get_command(app)
 
         with patch("odup.cli.createdb_workflow") as workflow:
             workflow.return_value = WorkflowOutcome()
             result = runner.invoke(
-                command,
+                app,
                 [
                     "createdb",
                     "demo",
@@ -40,12 +38,11 @@ class TestOdooCommandPassthrough:
 
     def test_upgrade_passes_extra_args(self) -> None:
         runner = CliRunner()
-        command = get_command(app)
 
         with patch("odup.cli.upgrade_workflow") as workflow:
             workflow.return_value = WorkflowOutcome()
             result = runner.invoke(
-                command,
+                app,
                 [
                     "upgrade",
                     "demo",
@@ -61,12 +58,11 @@ class TestOdooCommandPassthrough:
 
     def test_start_passes_extra_args(self) -> None:
         runner = CliRunner()
-        command = get_command(app)
 
         with patch("odup.cli.start_workflow") as workflow:
             workflow.return_value = WorkflowOutcome()
             result = runner.invoke(
-                command,
+                app,
                 ["start", "demo", "--shell", "--", "--log-level=info"],
             )
 
