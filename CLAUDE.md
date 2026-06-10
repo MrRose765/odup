@@ -41,8 +41,7 @@ The tool is built with **Typer** (CLI framework) and uses **psycopg2** for datab
 Each workflow:
 1. Validates environment (paths, versions, database state)
 2. Runs Odoo via `run_odoo_command()` with appropriate arguments
-3. Optionally sets metadata markers in `odup_metadata` table
-4. Returns exit code and error details
+3. Returns exit code and error details
 
 **Key pattern**: The `upgrade-path` is dynamically constructed to include both `upgrade-util` and `upgrade` module folders. Test tags like `upgrade.test_prepare` and `upgrade.test_check` validate upgrade mechanics.
 
@@ -139,11 +138,6 @@ except OdupError as exc:
 
 Unexpected exceptions bubble up so Typer renders them with rich tracebacks.
 
-### Database Metadata
-
-The `odup_metadata` table tracks upgrade test markers:
-- Created lazily by `_ensure_odup_metadata_table()`
-- Used to verify databases passed prepare tests before upgrade
 
 ### Logging
 
