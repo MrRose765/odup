@@ -191,6 +191,16 @@ class TestDiscoverExistingSources:
             ]
         )
 
+    def test_discover_existing_sources_for_upgrade_repo(self, tmp_path: Path) -> None:
+        _create_worktree(tmp_path, "odoo", "16.0")
+        (tmp_path / "src" / "upgrade-specific" / ".git").mkdir(parents=True)
+        (tmp_path / "src" / "upgrade" / ".git").mkdir(parents=True)
+
+        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
+            discovered = env.discover_existing_sources(version="upgrade-specific")
+
+        assert discovered == [tmp_path / "src" / "upgrade-specific"]
+
 
 class TestPullExistingSources:
     class FakeGitManager:

@@ -61,8 +61,10 @@ def discover_existing_sources(
     version: str | None = None, upgrade_only: bool = False
 ) -> list[Path]:
     repositories: list[Path] = []
+    is_upgrade_repo = version in UPGRADE_REPOSITORIES
 
-    if not upgrade_only:
+    if not upgrade_only and not is_upgrade_repo:
+        # Add source repositories
         for repository_name in SOURCE_REPOSITORIES:
             root = SRC_ROOT / repository_name
             if not root.exists():
@@ -75,8 +77,10 @@ def discover_existing_sources(
                 and (version is None or entry.name == version)
             )
 
-    if upgrade_only or version is None:
-        for repository_name in UPGRADE_REPOSITORIES:
+    repo_names = (version,) if is_upgrade_repo else UPGRADE_REPOSITORIES
+    if upgrade_only or is_upgrade_repo or version is None:
+        # Add upgrade repositories
+        for repository_name in repo_names:
             root = SRC_ROOT / repository_name
             if root.exists() and root.is_dir() and (root / ".git").exists():
                 repositories.append(root)

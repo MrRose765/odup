@@ -234,7 +234,15 @@ def env_add_workflow(version: str) -> WorkflowOutcome:
 def env_pull_workflow(
     version: str | None = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> WorkflowOutcome:
-    normalized_version = parse_version(version) if version else None
+    from .environment import UPGRADE_REPOSITORIES
+
+    normalized_version = (
+        version
+        if version in UPGRADE_REPOSITORIES
+        else parse_version(version)
+        if version
+        else None
+    )
     failures = pull_existing_sources(
         version=normalized_version, verbosity=verbosity, upgrade_only=upgrade_only
     )

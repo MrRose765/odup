@@ -211,7 +211,7 @@ def start(
 def env_pull(
     version: str | None = typer.Argument(
         None,
-        help="Optional version to pull (for example: 16.0, saas-16.3, master). If omitted, pulls every local checkout.",
+        help="Optional version or upgrade repo to pull (e.g. 16.0, saas-16.3, master, upgrade-specific). If omitted, pulls every local checkout.",
     ),
     verbosity: int = typer.Option(
         0,
