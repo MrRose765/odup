@@ -72,25 +72,12 @@ class GitManager:
             return False
         return True
 
-    def has_pending_changes(self, cwd: Path) -> bool:
-        return bool(self._run(["git", "status", "--porcelain"], cwd))
-
     def pull_ff_only(self, cwd: Path) -> None:
         self._run(
-            ["git", "pull", "--ff-only"],
+            ["git", "pull", "--ff-only", "--autostash"],
             cwd,
             echo_output=True,
         )
-
-    def stash(self, cwd: Path, message: str = "odup auto-stash") -> None:
-        self._run(
-            ["git", "stash", "push", "-u", "-m", message],
-            cwd,
-            echo_output=True,
-        )
-
-    def stash_pop(self, cwd: Path) -> None:
-        self._run(["git", "stash", "pop"], cwd, echo_output=True)
 
     def add_worktree(self, cwd: Path, dest: Path, branch: str) -> None:
         self._run(

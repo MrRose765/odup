@@ -217,17 +217,8 @@ class TestPullExistingSources:
         def has_upstream(self, cwd: Path) -> bool:
             return True
 
-        def has_pending_changes(self, cwd: Path) -> bool:
-            return False
-
         def pull_ff_only(self, cwd: Path) -> None:
             self.commands.append(cwd)
-
-        def stash(self, cwd: Path, message: str = "odup auto-stash") -> None:
-            pass
-
-        def stash_pop(self, cwd: Path) -> None:
-            pass
 
     def test_pull_existing_sources_collects_failures(
         self, tmp_path: Path, caplog
@@ -279,71 +270,6 @@ class TestPullExistingSources:
         assert not failures
         assert len(git_instance.commands) == 1
         assert git_instance.commands[0] == tmp_path / "src" / "odoo" / "16.0"
-
-    def test_pull_existing_sources_stashes_then_restores_changes(
-        self, tmp_path: Path, caplog
-    ) -> None:
-        caplog.set_level(logging.DEBUG)
-        repository = _create_worktree(tmp_path, "odoo", "16.0")
-
-        class StashingGitManager(self.FakeGitManager):
-            def __init__(self, verbosity: int = 0) -> None:
-                super().__init__(verbosity)
-                self.calls: list[str] = []
-                self.created_verbosity: list[int] = [verbosity]
-
-            def current_branch(self, cwd: Path) -> str:
-                assert cwd == repository
-                return "16.0"
-
-            def has_upstream(self, cwd: Path) -> bool:
-                assert cwd == repository
-                return True
-
-            def has_pending_changes(self, cwd: Path) -> bool:
-                assert cwd == repository
-                return True
-
-            def stash(self, cwd: Path, message: str = "odup auto-stash") -> None:
-                assert cwd == repository
-                assert message == "odup auto-stash before pull"
-                self.calls.append("stash")
-
-            def pull_ff_only(self, cwd: Path) -> None:
-                assert cwd == repository
-                self.calls.append("pull")
-
-            def stash_pop(self, cwd: Path) -> None:
-                assert cwd == repository
-                self.calls.append("stash_pop")
-
-        git_instance = None
-
-        def capture_git(*args, **kwargs):
-            nonlocal git_instance
-            git_instance = StashingGitManager(*args, **kwargs)
-            return git_instance
-
-        with (
-            patch("odup.environment.SRC_ROOT", tmp_path / "src"),
-            patch("odup.environment.GitManager", side_effect=capture_git),
-        ):
-            failures = env.pull_existing_sources(version="16.0", verbosity=2)
-
-        assert not failures
-        assert any(
-            record.levelno == logging.DEBUG
-            and "Stashed local changes" in record.message
-            for record in caplog.records
-        )
-        assert any(
-            record.levelno == logging.DEBUG
-            and "Restored stashed changes" in record.message
-            for record in caplog.records
-        )
-        # Guard against regressions where stash/pop order is broken.
-        assert git_instance.calls == ["stash", "pull", "stash_pop"]
-        assert git_instance.created_verbosity == [2]
 
     def test_pull_existing_sources_fails_on_detached_head(self, tmp_path: Path) -> None:
         repository = _create_worktree(tmp_path, "odoo", "16.0")

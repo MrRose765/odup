@@ -140,17 +140,8 @@ def pull_existing_sources(
             failures.append(failure)
             continue
 
-        used_stash = False
         try:
-            if git.has_pending_changes(repository):
-                git.stash(repository, "odup auto-stash before pull")
-                used_stash = True
-                logger.debug("Stashed local changes in %s", repository)
-
             git.pull_ff_only(repository)
-            if used_stash:
-                git.stash_pop(repository)
-                logger.debug("Restored stashed changes in %s", repository)
             logger.info("Updated %s", repository)
         except RuntimeError as exc:
             failure = _format_failure(repository, str(exc))
