@@ -14,6 +14,7 @@ from .environment import (
     add_version_environment,
     find_odoo_environment,
     pull_existing_sources,
+    remove_version_environment,
 )
 from .utils import run_odoo_command, SRC_ROOT
 from .versioning import (
@@ -228,6 +229,15 @@ def env_add_workflow(version: str) -> WorkflowOutcome:
     normalized_version = normalize_version(version)
     logger.info("Setting up environment for Odoo %s", normalized_version)
     add_version_environment(normalized_version)
+    return WorkflowOutcome()
+
+
+def env_rem_workflow(
+    version: str, force: bool = False, venv_only: bool = False
+) -> WorkflowOutcome:
+    normalized_version = normalize_version(version)
+    logger.info("Removing environment for Odoo %s", normalized_version)
+    remove_version_environment(normalized_version, force=force, venv_only=venv_only)
     return WorkflowOutcome()
 
 

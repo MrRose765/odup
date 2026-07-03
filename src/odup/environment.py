@@ -101,6 +101,33 @@ def add_version_environment(version: str) -> None:
     logger.info("Environment for %s is ready", version)
 
 
+def remove_version_environment(
+    version: str, force: bool = False, venv_only: bool = False
+) -> None:
+    if venv_only:
+        import shutil
+
+        venv_path = SRC_ROOT / "odoo" / version / ".venv"
+        if not venv_path.exists():
+            logger.info("No .venv found at %s", venv_path)
+        else:
+            logger.info("Removing %s", venv_path)
+            shutil.rmtree(venv_path)
+        return
+
+    git = GitManager()
+    for repo_name in SOURCE_REPOSITORIES:
+        dest = SRC_ROOT / repo_name / version
+        if not dest.exists():
+            logger.info("%s/%s does not exist, skipping", repo_name, version)
+            continue
+        master = SRC_ROOT / repo_name / "master"
+        logger.info("Removing worktree %s/%s", repo_name, version)
+        git.remove_worktree(master, dest, force=force)
+
+    logger.info("Environment for %s removed", version)
+
+
 def _pull_label(repository: Path) -> str:
     return f"pull {repository.parent.name}/{repository.name}"
 

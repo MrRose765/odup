@@ -11,6 +11,7 @@ from .workflows import (
     createdb_workflow,
     env_add_workflow,
     env_pull_workflow,
+    env_rem_workflow,
     start_workflow,
     upgrade_workflow,
 )
@@ -111,6 +112,26 @@ def env_add(
 ) -> None:
     """Add a new Odoo version: create worktrees for odoo and enterprise, set up venv, and install dependencies."""
     _run_workflow(env_add_workflow, version=version)
+
+
+@env_app.command("rem")
+def env_rem(
+    version: str = typer.Argument(
+        ..., help="Odoo version to remove (e.g. 17.0, saas-16.3)."
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force removal even if the worktree has uncommitted changes.",
+    ),
+    venv_only: bool = typer.Option(
+        False,
+        "--venv-only",
+        help="Only delete the .venv folder, leaving the worktrees intact.",
+    ),
+) -> None:
+    """Remove an Odoo version: delete worktrees for odoo, enterprise, and industry."""
+    _run_workflow(env_rem_workflow, version=version, force=force, venv_only=venv_only)
 
 
 @app.command(context_settings=ODOO_COMMAND_CONTEXT)

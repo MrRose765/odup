@@ -85,3 +85,9 @@ class GitManager:
             cwd,
             echo_output=True,
         )
+
+    def remove_worktree(self, cwd: Path, dest: Path, force: bool = False) -> None:
+        cmd = ["git", "worktree", "remove", str(dest)]
+        if force:
+            cmd.append("--force")
+        self._run(cmd, cwd, echo_output=True)
