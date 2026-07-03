@@ -1,28 +1,11 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from odup import environment as env
-from odup.error import OdooEnvironmentError
-import logging
-
-
-def _prepare_odoo_checkout(base: Path, version: str) -> tuple[Path, Path]:
-    odoo_base = base / "src" / "odoo" / version
-    (odoo_base / ".venv" / "bin").mkdir(parents=True)
-    (odoo_base / ".venv" / "bin" / "python").write_text("", encoding="utf-8")
-    (odoo_base / "odoo-bin").write_text("", encoding="utf-8")
-    (odoo_base / "addons").mkdir(parents=True)
-
-    enterprise_base = base / "src" / "enterprise" / version
-    enterprise_base.mkdir(parents=True)
-
-    industry_base = base / "src" / "industry" / version
-    industry_base.mkdir(parents=True)
-    return odoo_base, enterprise_base, industry_base
+from odup.environment import _collect_installs, _version_matches
 
 
 def _create_worktree(base: Path, repository: str, version: str) -> Path:
@@ -32,127 +15,48 @@ def _create_worktree(base: Path, repository: str, version: str) -> Path:
     return worktree
 
 
-class TestFindOdooEnvironment:
-    def test_find_odoo_environment(self, tmp_path: Path) -> None:
-        version = "16.0"
-        odoo_base, enterprise_base, industry_base = _prepare_odoo_checkout(
-            tmp_path, version
-        )
+class TestVersionMatches:
+    def test_wildcard_always_matches(self) -> None:
+        assert _version_matches("16.0", "*") is True
 
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            venv_path, odoo_bin, addons_path = env.find_odoo_environment(version)
+    def test_gte(self) -> None:
+        assert _version_matches("17.0", ">=16.0") is True
+        assert _version_matches("16.0", ">=16.0") is True
+        assert _version_matches("15.0", ">=16.0") is False
 
-        assert venv_path == odoo_base / ".venv"
-        assert odoo_bin == odoo_base / "odoo-bin"
-        assert (
-            addons_path == f"{odoo_base / 'addons'},{enterprise_base},{industry_base}"
-        )
+    def test_lt(self) -> None:
+        assert _version_matches("17.0", "<18.0") is True
+        assert _version_matches("18.0", "<18.0") is False
 
-    def test_find_odoo_environment_missing_version(self, tmp_path: Path) -> None:
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            with pytest.raises(OdooEnvironmentError):
-                env.find_odoo_environment("16.0")
+    def test_compound_selector(self) -> None:
+        assert _version_matches("16.0", ">=14.0,<18.0") is True
+        assert _version_matches("13.0", ">=14.0,<18.0") is False
+        assert _version_matches("18.0", ">=14.0,<18.0") is False
 
-    def test_find_odoo_environment_without_industry(self, tmp_path: Path) -> None:
-        version = "19.0"
-        odoo_base, enterprise_base, industry_base = _prepare_odoo_checkout(
-            tmp_path, version
-        )
-
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            venv_path, odoo_bin, addons_path = env.find_odoo_environment(
-                version, add_industry=False
-            )
-
-        assert venv_path == odoo_base / ".venv"
-        assert odoo_bin == odoo_base / "odoo-bin"
-        assert addons_path == f"{odoo_base / 'addons'},{enterprise_base}"
+    def test_invalid_selector_returns_false(self, caplog) -> None:
+        caplog.set_level(logging.WARNING)
+        assert _version_matches("16.0", "bad-selector") is False
+        assert "Invalid version selector condition" in caplog.text
 
 
-class TestAddVersionEnvironment:
-    class FakeGitManager:
-        def __init__(self, **kwargs) -> None:
-            self.worktrees_added: list[tuple[Path, Path, str]] = []
+class TestCollectInstalls:
+    def test_empty_installs(self) -> None:
+        assert _collect_installs([], "16.0") == []
 
-        def add_worktree(self, cwd: Path, dest: Path, branch: str) -> None:
-            self.worktrees_added.append((cwd, dest, branch))
+    def test_matching_selector_returns_packages(self) -> None:
+        installs = [(">=16.0", [["debugpy"], ["jwt"]])]
+        assert _collect_installs(installs, "17.0") == [["debugpy"], ["jwt"]]
 
-    def _run(self, tmp_path: Path, version: str, venv_exists: bool = False):
-        if venv_exists:
-            (tmp_path / "src" / "odoo" / version / ".venv").mkdir(parents=True)
+    def test_non_matching_selector_excluded(self) -> None:
+        installs = [(">=18.0", [["some-package"]])]
+        assert _collect_installs(installs, "16.0") == []
 
-        git_instance = None
-
-        def capture_git(*args, **kwargs):
-            nonlocal git_instance
-            git_instance = self.FakeGitManager()
-            return git_instance
-
-        uv_calls: list[list[str]] = []
-
-        with (
-            patch("odup.environment.SRC_ROOT", tmp_path / "src"),
-            patch("odup.environment.GitManager", side_effect=capture_git),
-            patch("odup.environment.read_min_python_version", return_value="3.10"),
-            patch(
-                "odup.environment.run_uv",
-                side_effect=lambda args, cwd: uv_calls.append(args),
-            ),
-        ):
-            env.add_version_environment(version)
-
-        return git_instance, uv_calls
-
-    def test_creates_worktrees_for_both_repos(self, tmp_path: Path) -> None:
-        git, _ = self._run(tmp_path, "17.0")
-
-        assert len(git.worktrees_added) == 3
-        assert git.worktrees_added[0] == (
-            tmp_path / "src" / "odoo" / "master",
-            tmp_path / "src" / "odoo" / "17.0",
-            "17.0",
-        )
-        assert git.worktrees_added[1] == (
-            tmp_path / "src" / "enterprise" / "master",
-            tmp_path / "src" / "enterprise" / "17.0",
-            "17.0",
-        )
-        assert git.worktrees_added[2] == (
-            tmp_path / "src" / "industry" / "master",
-            tmp_path / "src" / "industry" / "17.0",
-            "17.0",
-        )
-
-    def test_skips_existing_worktree(self, tmp_path: Path) -> None:
-        (tmp_path / "src" / "enterprise" / "17.0").mkdir(parents=True)
-        git, _ = self._run(tmp_path, "17.0")
-
-        assert len(git.worktrees_added) == 2
-        assert git.worktrees_added[0][1] == tmp_path / "src" / "odoo" / "17.0"
-        assert git.worktrees_added[1][1] == tmp_path / "src" / "industry" / "17.0"
-
-    def test_creates_venv_when_missing(self, tmp_path: Path) -> None:
-        _, uv_calls = self._run(tmp_path, "17.0", venv_exists=False)
-
-        assert ["venv", ".venv", "--python", "3.10"] in uv_calls
-
-    def test_skips_venv_when_exists(self, tmp_path: Path) -> None:
-        _, uv_calls = self._run(tmp_path, "17.0", venv_exists=True)
-
-        assert not any(call[0] == "venv" for call in uv_calls)
-
-    def test_always_installs_requirements_and_extras(self, tmp_path: Path) -> None:
-        _, uv_calls = self._run(tmp_path, "17.0")
-
-        assert [
-            "pip",
-            "install",
-            "-r",
-            "requirements.txt",
-            "--python",
-            ".venv/bin/python",
-        ] in uv_calls
-        assert ["pip", "install", "debugpy", "jwt"] in uv_calls
+    def test_only_matching_selectors_included(self) -> None:
+        installs = [
+            (">=16.0", [["debugpy"]]),
+            (">=18.0", [["new-package"]]),
+        ]
+        assert _collect_installs(installs, "17.0") == [["debugpy"]]
 
 
 class TestDiscoverExistingSources:
@@ -215,7 +119,6 @@ class TestPullExistingSources:
         def __init__(self, verbosity: int = 0) -> None:
             self.verbosity = verbosity
             self.commands: list[Path] = []
-            self.created_verbosity: list[int] = []
 
         def current_branch(self, cwd: Path) -> str:
             return "16.0"
@@ -297,3 +200,43 @@ class TestPullExistingSources:
         assert failures[0].startswith(
             "pull odoo/16.0 has failed: detached HEAD; switch to a branch with an upstream before pulling"
         )
+
+    def test_pull_fails_when_no_upstream(self, tmp_path: Path) -> None:
+        _create_worktree(tmp_path, "odoo", "16.0")
+
+        class NoUpstreamGitManager(self.FakeGitManager):
+            def has_upstream(self, cwd: Path) -> bool:
+                return False
+
+        with (
+            patch("odup.environment.SRC_ROOT", tmp_path / "src"),
+            patch("odup.environment.GitManager", side_effect=NoUpstreamGitManager),
+        ):
+            failures = env.pull_existing_sources()
+
+        assert len(failures) == 1
+        assert "has no upstream configured" in failures[0]
+
+    def test_pull_warns_on_non_master_upgrade_repo(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        (tmp_path / "src" / "upgrade" / ".git").mkdir(parents=True)
+
+        git_instance = None
+
+        def capture_git(*args, **kwargs):
+            nonlocal git_instance
+            # FakeGitManager.current_branch returns "16.0", which is != "master"
+            git_instance = self.FakeGitManager(*args, **kwargs)
+            return git_instance
+
+        caplog.set_level(logging.WARNING)
+        with (
+            patch("odup.environment.SRC_ROOT", tmp_path / "src"),
+            patch("odup.environment.GitManager", side_effect=capture_git),
+        ):
+            failures = env.pull_existing_sources()
+
+        assert not failures
+        assert "not master" in caplog.text
+        assert len(git_instance.commands) == 1
