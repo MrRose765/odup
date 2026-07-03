@@ -1,32 +1,60 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from .git import GitManager
-from .versioning import read_min_python_version
+from .versioning import read_min_python_version, parse_version
 from .utils import SRC_ROOT, run_uv
 from .error import OdooEnvironmentError
+from .version_config import (
+    PRE_INSTALLS,
+    POST_INSTALLS,
+    UPGRADE_REPOSITORIES,
+    SOURCE_REPOSITORIES,
+)
 
-SOURCE_REPOSITORIES = ("odoo", "enterprise", "industry")
-UPGRADE_REPOSITORIES = frozenset({"upgrade-util", "upgrade", "upgrade-specific"})
-WORKTREE_REPOS = ("odoo", "enterprise")
 logger = logging.getLogger(__name__)
 
 
-def add_version_environment(version: str) -> None:
-    git = GitManager()
+def _version_matches(version: str, selector: str) -> bool:
+    """Return True if version satisfies selector (e.g. "*", ">=16.0", ">=14.0,<18.0")."""
+    compare = {
+        ">": lambda a, b: a > b,
+        ">=": lambda a, b: a >= b,
+        "<": lambda a, b: a < b,
+        "<=": lambda a, b: a <= b,
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+    }
 
-    for repo_name in WORKTREE_REPOS:
-        dest = SRC_ROOT / repo_name / version
-        if dest.exists():
-            logger.info("%s/%s already exists, skipping worktree", repo_name, version)
-            continue
-        master = SRC_ROOT / repo_name / "master"
-        logger.info("Creating worktree %s/%s", repo_name, version)
-        git.add_worktree(master, dest, version)
+    if selector == "*":
+        return True
+    for condition in selector.split(","):
+        m = re.match(r"(>=|<=|==|!=|>|<)\s*(\S+)", condition.strip())
+        if not m or len(m.groups()) != 2:
+            logger.warning("Invalid version selector condition: %s", condition)
+            return False
+        operator, bound = m.groups()
+        satisfied = compare[operator](parse_version(version), parse_version(bound))
+        if not satisfied:
+            return False
+    return True
 
-    odoo_dir = SRC_ROOT / "odoo" / version
+
+def _collect_installs(
+    installs: list[tuple[str, list[list[str]]]], version: str
+) -> list[list[str]]:
+    return [
+        packages
+        for selector, install_list in installs
+        if _version_matches(version, selector)
+        for packages in install_list
+    ]
+
+
+def _setup_venv(version: str, odoo_dir: Path) -> None:
     python_version = read_min_python_version(version)
     logger.debug("Minimum Python version from release.py: %s", python_version)
 
@@ -37,15 +65,39 @@ def add_version_environment(version: str) -> None:
         logger.info("Creating virtual environment (Python %s)", python_version)
         run_uv(["venv", ".venv", "--python", python_version], cwd=odoo_dir)
 
+    for install_args in _collect_installs(PRE_INSTALLS, version):
+        logger.info("Pre-installing %s", " ".join(install_args))
+        run_uv(["pip", "install", *install_args], cwd=odoo_dir)
+
     logger.info("Installing requirements.txt")
     run_uv(
         ["pip", "install", "-r", "requirements.txt", "--python", ".venv/bin/python"],
         cwd=odoo_dir,
     )
 
-    logger.info("Installing extras (debugpy, jwt)")
-    run_uv(["pip", "install", "debugpy", "jwt"], cwd=odoo_dir)
+    for install_args in _collect_installs(POST_INSTALLS, version):
+        logger.info("Installing %s", " ".join(install_args))
+        run_uv(["pip", "install", *install_args], cwd=odoo_dir)
 
+
+def add_version_environment(version: str) -> None:
+    git = GitManager()
+
+    for repo_name in SOURCE_REPOSITORIES:
+        if repo_name == "industry" and parse_version(version) < parse_version("17.0"):
+            logger.info(
+                "Skipping industry for version %s (not available before 17.0)", version
+            )
+            continue
+        dest = SRC_ROOT / repo_name / version
+        if dest.exists():
+            logger.info("%s/%s already exists, skipping worktree", repo_name, version)
+            continue
+        master = SRC_ROOT / repo_name / "master"
+        logger.info("Creating worktree %s/%s", repo_name, version)
+        git.add_worktree(master, dest, version)
+
+    _setup_venv(version, SRC_ROOT / "odoo" / version)
     logger.info("Environment for %s is ready", version)
 
 

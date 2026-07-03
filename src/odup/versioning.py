@@ -6,6 +6,19 @@ import re
 from .database import query_version
 from .error import VersionDetectionError
 from .utils import SRC_ROOT
+from .version_config import PYTHON_VERSIONS
+
+_component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
+_replace = {
+    "pre": "c",
+    "preview": "c",
+    "-": "final-",
+    "_": "final-",
+    "rc": "c",
+    "dev": "@",
+    "saas": "",
+    "~": "",
+}.get
 
 
 def _read_release_py(version: str, pattern: str) -> re.Match:
@@ -21,22 +34,72 @@ def _read_release_py(version: str, pattern: str) -> re.Match:
 
 
 def read_min_python_version(version: str) -> str:
-    match = _read_release_py(
-        version, r"MIN_PY_VERSION\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)"
-    )
-    return f"{match.group(1)}.{match.group(2)}"
+    try:
+        match = _read_release_py(
+            version, r"MIN_PY_VERSION\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)"
+        )
+        return f"{match.group(1)}.{match.group(2)}"
+    except VersionDetectionError:
+        fallback = PYTHON_VERSIONS.get(version)
+        if fallback:
+            return fallback
+        raise
 
 
-def _read_master_floor_from_release() -> tuple[int, int]:
+def _read_master_version_number() -> tuple[int, int]:
     match = _read_release_py("master", r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,")
     return int(match.group(1)), int(match.group(2))
 
 
-def parse_version(version_str: str) -> str:
+def __parse_version_parts(s: str):
+    for part in _component_re.split(s):
+        part = _replace(part, part)
+        if not part or part == ".":
+            continue
+        if part[:1] in "0123456789":
+            yield part.zfill(8)
+        else:
+            yield "*" + part
+    yield "*final"
+
+
+def parse_version(s: str) -> tuple[str, ...]:
+    """Convert a version string to a chronologically-sortable key.
+
+    Taken from Odoo's own ``parse_version`` (originally from setuptools 0.6c8).
+    Returns a tuple of strings that compares correctly with standard operators,
+    so e.g. ``compare_version("16.0") < compare_version("17.0")`` is True.
+
+    Handles Odoo-specific tokens: "saas" and "~" are stripped so that
+    "saas-16.3" sorts between "16.0" and "17.0" as expected.
+    """
+    parts: list[str] = []
+    for part in __parse_version_parts((s or "0.1").lower()):
+        if part.startswith("*"):
+            if part < "*final":
+                while parts and parts[-1] == "*final-":
+                    parts.pop()
+            while parts and parts[-1] == "00000000":
+                parts.pop()
+        parts.append(part)
+    return tuple(parts)
+
+
+def normalize_version(version_str: str) -> str:
+    """Normalize a version string to the corresponding local checkout folder name.
+
+    Accepts any loose version string (e.g. from a database, a CLI argument, or
+    a branch name) and maps it to one of three canonical forms:
+      - ``"master"``           — for the current development branch
+      - ``"saas-<X>.<Y>"``    — for saas/minor releases (minor > 0)
+      - ``"<X>.0"``           — for stable major releases
+
+    Raises VersionDetectionError if the string cannot be parsed.
+    """
     if not version_str:
         raise VersionDetectionError("Received an empty Odoo version string.")
 
-    master_major, master_minor = _read_master_floor_from_release()
+    master_major, master_minor = _read_master_version_number()
     v = version_str.strip().lower().replace("~", ".").replace("-", ".")
 
     if "master" in v:
@@ -58,9 +121,9 @@ def parse_version(version_str: str) -> str:
     return f"{major}.0"
 
 
-def _major_number(version: str) -> int:
+def get_major_number(version: str) -> int:
     if version == "master":
-        major, _ = _read_master_floor_from_release()
+        major, _ = _read_master_version_number()
         return major
     match = re.search(r"\d+", version)
     if match:
@@ -79,8 +142,8 @@ def build_upgrade_chain(source_version: str, target_version: str) -> list[str]:
     if source_version == target_version:
         return []
 
-    src_major = _major_number(source_version)
-    tgt_major = _major_number(target_version)
+    src_major = get_major_number(source_version)
+    tgt_major = get_major_number(target_version)
 
     if src_major == tgt_major:
         return [target_version]
@@ -99,6 +162,7 @@ def build_upgrade_chain(source_version: str, target_version: str) -> list[str]:
 
 
 def infer_version(db_name: str) -> str:
+    """Return the normalized Odoo version string for a given database"""
     version = query_version(db_name)
 
     if not version:
@@ -106,4 +170,4 @@ def infer_version(db_name: str) -> str:
             f"Database '{db_name}' did not return a base module version."
         )
 
-    return parse_version(version)
+    return normalize_version(version)

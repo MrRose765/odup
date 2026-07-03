@@ -19,7 +19,7 @@ from .utils import run_odoo_command, SRC_ROOT
 from .versioning import (
     build_upgrade_chain,
     infer_version,
-    parse_version,
+    normalize_version,
 )
 
 PREPARE_TESTS_TAG = "upgrade.test_prepare"
@@ -62,7 +62,7 @@ def createdb_workflow(
     logger.info("Creating Odoo database '%s' for version %s", db_name, version)
 
     drop_if_exists(db_name)
-    normalized_version = parse_version(version or "master")
+    normalized_version = normalize_version(version or "master")
     logger.debug("Normalized Odoo version: %s", normalized_version)
     venv_path, odoo_bin, addons_path = find_odoo_environment(normalized_version)
     _log_environment_context(venv_path, odoo_bin, addons_path)
@@ -110,7 +110,7 @@ def upgrade_workflow(
     debug: bool,
     extra_args: list[str] | None = None,
 ) -> WorkflowOutcome:
-    normalized_target_version = parse_version(target_version)
+    normalized_target_version = normalize_version(target_version)
     source_version = infer_version(db_name)
     chain = build_upgrade_chain(source_version, normalized_target_version)
 
@@ -225,24 +225,23 @@ def clean_workflow(all_dbs: bool) -> WorkflowOutcome:
 
 
 def env_add_workflow(version: str) -> WorkflowOutcome:
-    normalized_version = parse_version(version)
+    normalized_version = normalize_version(version)
     logger.info("Setting up environment for Odoo %s", normalized_version)
     add_version_environment(normalized_version)
     return WorkflowOutcome()
 
 
 def env_pull_workflow(
-    version: str | None = None, verbosity: int = 0, upgrade_only: bool = False
+    target: str | None = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> WorkflowOutcome:
     from .environment import UPGRADE_REPOSITORIES
 
-    normalized_version = (
-        version
-        if version in UPGRADE_REPOSITORIES
-        else parse_version(version)
-        if version
-        else None
-    )
+    if target and target not in UPGRADE_REPOSITORIES:
+        # Specific version to pull
+        normalized_version = normalize_version(target)
+    else:
+        normalized_version = target
+
     failures = pull_existing_sources(
         version=normalized_version, verbosity=verbosity, upgrade_only=upgrade_only
     )

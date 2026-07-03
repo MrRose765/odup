@@ -106,7 +106,7 @@ class TestAddVersionEnvironment:
     def test_creates_worktrees_for_both_repos(self, tmp_path: Path) -> None:
         git, _ = self._run(tmp_path, "17.0")
 
-        assert len(git.worktrees_added) == 2
+        assert len(git.worktrees_added) == 3
         assert git.worktrees_added[0] == (
             tmp_path / "src" / "odoo" / "master",
             tmp_path / "src" / "odoo" / "17.0",
@@ -117,13 +117,19 @@ class TestAddVersionEnvironment:
             tmp_path / "src" / "enterprise" / "17.0",
             "17.0",
         )
+        assert git.worktrees_added[2] == (
+            tmp_path / "src" / "industry" / "master",
+            tmp_path / "src" / "industry" / "17.0",
+            "17.0",
+        )
 
     def test_skips_existing_worktree(self, tmp_path: Path) -> None:
         (tmp_path / "src" / "enterprise" / "17.0").mkdir(parents=True)
         git, _ = self._run(tmp_path, "17.0")
 
-        assert len(git.worktrees_added) == 1
+        assert len(git.worktrees_added) == 2
         assert git.worktrees_added[0][1] == tmp_path / "src" / "odoo" / "17.0"
+        assert git.worktrees_added[1][1] == tmp_path / "src" / "industry" / "17.0"
 
     def test_creates_venv_when_missing(self, tmp_path: Path) -> None:
         _, uv_calls = self._run(tmp_path, "17.0", venv_exists=False)

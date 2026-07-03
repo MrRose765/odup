@@ -6,9 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from odup.error import VersionDetectionError
-from odup.versioning import _read_master_floor_from_release
+from odup.versioning import _read_master_version_number
 from odup.versioning import build_upgrade_chain
-from odup.versioning import parse_version
+from odup.versioning import normalize_version
 from odup.versioning import read_min_python_version
 
 
@@ -18,23 +18,21 @@ class TestReadReleasePy:
         release_py.parent.mkdir(parents=True, exist_ok=True)
         release_py.write_text(content, encoding="utf-8")
 
-    def test_read_master_floor_from_release(self, tmp_path: Path) -> None:
+    def test_read_master_version_number(self, tmp_path: Path) -> None:
         self._write(tmp_path, "master", "version_info = (17, 0, 0, 'final', 0)\n")
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
-            assert _read_master_floor_from_release() == (17, 0)
+            assert _read_master_version_number() == (17, 0)
 
-    def test_read_master_floor_from_release__missing_file(self, tmp_path: Path) -> None:
+    def test_read_master_version_number__missing_file(self, tmp_path: Path) -> None:
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
-                _read_master_floor_from_release()
+                _read_master_version_number()
 
-    def test_read_master_floor_from_release__missing_pattern(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_master_version_number_missing_pattern(self, tmp_path: Path) -> None:
         self._write(tmp_path, "master", "# no version info\n")
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
-                _read_master_floor_from_release()
+                _read_master_version_number()
 
     def test_read_min_python_version(self, tmp_path: Path) -> None:
         self._write(tmp_path, "17.0", "MIN_PY_VERSION = (3, 10)\n")
@@ -56,7 +54,7 @@ class TestReadReleasePy:
 class TestBuildUpgradeChain:
     def _patch_master(self, major: int):
         return patch(
-            "odup.versioning._read_master_floor_from_release", return_value=(major, 0)
+            "odup.versioning._read_master_version_number", return_value=(major, 0)
         )
 
     def test_single_major_step(self) -> None:
@@ -114,15 +112,13 @@ class TestParseVersion:
             ("v16.1", "saas-16.1"),
         ],
     )
-    def test_parse_version_normalization(self, version_str: str, expected: str) -> None:
-        with patch(
-            "odup.versioning._read_master_floor_from_release", return_value=(17, 0)
-        ):
-            assert parse_version(version_str) == expected
+    def test_normalize_version_normalization(
+        self, version_str: str, expected: str
+    ) -> None:
+        with patch("odup.versioning._read_master_version_number", return_value=(17, 0)):
+            assert normalize_version(version_str) == expected
 
-    def test_parse_version_raises_on_no_digits(self) -> None:
-        with patch(
-            "odup.versioning._read_master_floor_from_release", return_value=(17, 0)
-        ):
+    def test_normalize_version_raises_on_no_digits(self) -> None:
+        with patch("odup.versioning._read_master_version_number", return_value=(17, 0)):
             with pytest.raises(VersionDetectionError):
-                parse_version("unknown")
+                normalize_version("unknown")
