@@ -230,7 +230,7 @@ def start(
 
 @env_app.command("pull")
 def env_pull(
-    version: str | None = typer.Argument(
+    target: str | None = typer.Argument(
         None,
         help="Optional version or upgrade repo to pull (e.g. 16.0, saas-16.3, master, upgrade-specific). If omitted, pulls every local checkout.",
     ),
@@ -252,7 +252,7 @@ def env_pull(
         logging.getLogger().setLevel(logging.DEBUG)
     _run_workflow(
         env_pull_workflow,
-        version=version,
+        target=target,
         verbosity=verbosity,
         upgrade_only=upgrade_only,
     )
