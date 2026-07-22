@@ -13,9 +13,9 @@ from .database import (
 from .environment import (
     add_version_environment,
     find_odoo_environment,
-    pull_existing_sources,
     remove_version_environment,
 )
+from .sources import pull_existing_sources
 from .utils import run_odoo_command, SRC_ROOT
 from .versioning import (
     build_upgrade_chain,
@@ -244,7 +244,7 @@ def env_rem_workflow(
 def env_pull_workflow(
     target: str | None = None, verbosity: int = 0, upgrade_only: bool = False
 ) -> WorkflowOutcome:
-    from .environment import UPGRADE_REPOSITORIES
+    from .version_config import UPGRADE_REPOSITORIES
 
     if target and target not in UPGRADE_REPOSITORIES:
         # Specific version to pull
