@@ -57,12 +57,19 @@ class GitManager:
         return completed.stdout.strip()
 
     def current_branch(self, cwd: Path) -> str:
+        """
+        Return the current branch name of the repository.
+        If the repository is in a detached HEAD state, returns "HEAD".
+        """
         return self._run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd,
         )
 
     def has_upstream(self, cwd: Path) -> bool:
+        """
+        Return True if the current branch has an upstream configured.
+        """
         try:
             self._run(
                 ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
@@ -72,9 +79,16 @@ class GitManager:
             return False
         return True
 
-    def pull_ff_only(self, cwd: Path) -> None:
+    def fetch(self, cwd: Path) -> None:
         self._run(
-            ["git", "pull", "--ff-only", "--autostash"],
+            ["git", "fetch", "--all", "--prune"],
+            cwd,
+            echo_output=True,
+        )
+
+    def rebase(self, cwd: Path) -> None:
+        self._run(
+            ["git", "rebase", "--autostash"],
             cwd,
             echo_output=True,
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Iterator
 
 from .git import GitManager
 from .versioning import read_min_python_version, parse_version
@@ -128,43 +129,48 @@ def remove_version_environment(
     logger.info("Environment for %s removed", version)
 
 
-def _pull_label(repository: Path) -> str:
-    return f"pull {repository.parent.name}/{repository.name}"
+def _format_pull_failure(repository: Path, reason: str) -> str:
+    repository = f"{repository.parent.name}/{repository.name}"
+    return f"Pull {repository} has failed: {reason}"
 
 
-def _format_failure(repository: Path, reason: str) -> str:
-    return f"{_pull_label(repository)} has failed: {reason}"
+def _iter_worktrees(root: Path, version: str | None) -> Iterator[Path]:
+    if not root.is_dir():
+        return
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir() or not (entry / ".git").exists():
+            continue
+        if version is not None and entry.name != version:
+            continue
+        yield entry
 
 
-def discover_existing_sources(
-    version: str | None = None, upgrade_only: bool = False
-) -> list[Path]:
-    repositories: list[Path] = []
-    is_upgrade_repo = version in UPGRADE_REPOSITORIES
+def _rebase_worktree(git: GitManager, repository: Path, failures: list[str]) -> None:
+    branch = git.current_branch(repository)
 
-    if not upgrade_only and not is_upgrade_repo:
-        # Add source repositories
-        for repository_name in SOURCE_REPOSITORIES:
-            root = SRC_ROOT / repository_name
-            if not root.exists():
-                continue
-            repositories.extend(
-                entry
-                for entry in root.iterdir()
-                if entry.is_dir()
-                and (entry / ".git").exists()
-                and (version is None or entry.name == version)
+    if not git.has_upstream(repository):
+        failures.append(
+            _format_pull_failure(
+                repository,
+                f"branch '{branch}' has no upstream configured" + "Detached HEAD state"
+                if branch == "HEAD"
+                else "",
             )
+        )
+        return
 
-    repo_names = (version,) if is_upgrade_repo else UPGRADE_REPOSITORIES
-    if upgrade_only or is_upgrade_repo or version is None:
-        # Add upgrade repositories
-        for repository_name in repo_names:
-            root = SRC_ROOT / repository_name
-            if root.exists() and root.is_dir() and (root / ".git").exists():
-                repositories.append(root)
+    if repository.name in UPGRADE_REPOSITORIES and branch != "master":
+        logger.warning(
+            "%s is on branch '%s', not master; upgrade scripts may be out of date",
+            repository.name,
+            branch,
+        )
 
-    return sorted(repositories)
+    try:
+        git.rebase(repository)
+        logger.info("Updated %s", repository)
+    except RuntimeError as exc:
+        failures.append(_format_pull_failure(repository, str(exc)))
 
 
 def pull_existing_sources(
@@ -173,58 +179,47 @@ def pull_existing_sources(
     failures: list[str] = []
     git = GitManager(verbosity=verbosity)
 
-    repositories = discover_existing_sources(version=version, upgrade_only=upgrade_only)
-    if not repositories:
-        if upgrade_only:
-            logger.warning(
-                "No local git checkouts found under ~/src/{upgrade-util,upgrade,upgrade-specific}"
-            )
-        elif version:
-            logger.warning("No local git checkouts found for version '%s'", version)
-        else:
-            logger.warning(
-                "No local git checkouts found under ~/src/{odoo,enterprise,industry,upgrade-util,upgrade,upgrade-specific}"
-            )
-        return failures
+    is_upgrade_target = version in UPGRADE_REPOSITORIES
+    pull_sources = not upgrade_only and not is_upgrade_target
+    pull_upgrade = upgrade_only or is_upgrade_target or version is None
 
-    for repository in repositories:
-        logger.info("Pulling %s", repository)
+    pulled_any = False
 
-        try:
-            branch = git.current_branch(repository)
-        except RuntimeError as exc:
-            failure = _format_failure(repository, str(exc))
-            failures.append(failure)
-            continue
+    if pull_sources:
+        for repo_name in SOURCE_REPOSITORIES:
+            root = SRC_ROOT / repo_name
+            if not root.is_dir():
+                continue
+            master = root / "master"
+            logger.info("Fetching %s", repo_name)
+            try:
+                # One fetch at master populates objects for all sibling worktrees.
+                git.fetch(master)
+            except RuntimeError as exc:
+                failures.append(_format_pull_failure(master, str(exc)))
+                continue
+            for worktree in _iter_worktrees(root, version):
+                pulled_any = True
+                logger.info("Pulling %s", worktree)
+                _rebase_worktree(git, worktree, failures)
 
-        if branch == "HEAD":
-            failure = _format_failure(
-                repository,
-                "detached HEAD; switch to a branch with an upstream before pulling",
-            )
-            failures.append(failure)
-            continue
+    if pull_upgrade:
+        repo_names = [version] if is_upgrade_target else UPGRADE_REPOSITORIES
+        for repo_name in repo_names:
+            root = SRC_ROOT / repo_name
+            if not (root.is_dir() and (root / ".git").exists()):
+                continue
+            pulled_any = True
+            logger.info("Pulling %s", root)
+            try:
+                git.fetch(root)
+            except RuntimeError as exc:
+                failures.append(_format_pull_failure(root, str(exc)))
+                continue
+            _rebase_worktree(git, root, failures)
 
-        if repository.name in UPGRADE_REPOSITORIES and branch != "master":
-            logger.warning(
-                "%s is on branch '%s', not master; upgrade scripts may be out of date",
-                repository.name,
-                branch,
-            )
-
-        if not git.has_upstream(repository):
-            failure = _format_failure(
-                repository, f"branch '{branch}' has no upstream configured"
-            )
-            failures.append(failure)
-            continue
-
-        try:
-            git.pull_ff_only(repository)
-            logger.info("Updated %s", repository)
-        except RuntimeError as exc:
-            failure = _format_failure(repository, str(exc))
-            failures.append(failure)
+    if not pulled_any:
+        logger.warning("No repositories found to pull. Check your source directories.")
 
     return failures
 

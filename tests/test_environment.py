@@ -10,7 +10,7 @@ from odup.environment import _collect_installs, _version_matches
 
 def _create_worktree(base: Path, repository: str, version: str) -> Path:
     worktree = base / "src" / repository / version
-    # A .git directory is enough for discover_existing_sources() to treat this as a repo.
+    # A .git directory is enough for pull_existing_sources() to treat this as a repo.
     (worktree / ".git").mkdir(parents=True)
     return worktree
 
@@ -59,59 +59,6 @@ class TestCollectInstalls:
         assert _collect_installs(installs, "17.0") == [["debugpy"]]
 
 
-class TestDiscoverExistingSources:
-    def test_discover_existing_sources(self, tmp_path: Path) -> None:
-        _create_worktree(tmp_path, "odoo", "16.0")
-        _create_worktree(tmp_path, "odoo", "17.0")
-        _create_worktree(tmp_path, "enterprise", "16.0")
-        _create_worktree(tmp_path, "industry", "16.0")
-        # This directory should be ignored because it is missing a .git marker.
-        (tmp_path / "src" / "odoo" / "not-a-worktree").mkdir(
-            parents=True, exist_ok=True
-        )
-
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            discovered = env.discover_existing_sources()
-
-        assert discovered == sorted(
-            [
-                tmp_path / "src" / "enterprise" / "16.0",
-                tmp_path / "src" / "industry" / "16.0",
-                tmp_path / "src" / "odoo" / "16.0",
-                tmp_path / "src" / "odoo" / "17.0",
-            ]
-        )
-
-    def test_discover_existing_sources_for_specific_version(
-        self, tmp_path: Path
-    ) -> None:
-        _create_worktree(tmp_path, "odoo", "16.0")
-        _create_worktree(tmp_path, "odoo", "17.0")
-        _create_worktree(tmp_path, "enterprise", "16.0")
-        _create_worktree(tmp_path, "industry", "16.0")
-
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            discovered = env.discover_existing_sources(version="16.0")
-
-        assert discovered == sorted(
-            [
-                tmp_path / "src" / "enterprise" / "16.0",
-                tmp_path / "src" / "industry" / "16.0",
-                tmp_path / "src" / "odoo" / "16.0",
-            ]
-        )
-
-    def test_discover_existing_sources_for_upgrade_repo(self, tmp_path: Path) -> None:
-        _create_worktree(tmp_path, "odoo", "16.0")
-        (tmp_path / "src" / "upgrade-specific" / ".git").mkdir(parents=True)
-        (tmp_path / "src" / "upgrade" / ".git").mkdir(parents=True)
-
-        with patch("odup.environment.SRC_ROOT", tmp_path / "src"):
-            discovered = env.discover_existing_sources(version="upgrade-specific")
-
-        assert discovered == [tmp_path / "src" / "upgrade-specific"]
-
-
 class TestPullExistingSources:
     class FakeGitManager:
         """Base test double for GitManager with configurable behavior."""
@@ -119,6 +66,7 @@ class TestPullExistingSources:
         def __init__(self, verbosity: int = 0) -> None:
             self.verbosity = verbosity
             self.commands: list[Path] = []
+            self.fetches: list[Path] = []
 
         def current_branch(self, cwd: Path) -> str:
             return "16.0"
@@ -126,7 +74,10 @@ class TestPullExistingSources:
         def has_upstream(self, cwd: Path) -> bool:
             return True
 
-        def pull_ff_only(self, cwd: Path) -> None:
+        def fetch(self, cwd: Path) -> None:
+            self.fetches.append(cwd)
+
+        def rebase(self, cwd: Path) -> None:
             self.commands.append(cwd)
 
     def test_pull_existing_sources_collects_failures(
@@ -137,7 +88,7 @@ class TestPullExistingSources:
         _create_worktree(tmp_path, "enterprise", "16.0")
 
         class FailingGitManager(self.FakeGitManager):
-            def pull_ff_only(self, cwd: Path) -> None:
+            def rebase(self, cwd: Path) -> None:
                 self.commands.append(cwd)
                 if "enterprise" in str(cwd):
                     raise RuntimeError("boom")
