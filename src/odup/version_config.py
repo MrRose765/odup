@@ -3,6 +3,8 @@ from __future__ import annotations
 # Fallback Python version for versions where release.py lacks MIN_PY_VERSION.
 # Keys are normalized version strings (e.g. "14.0", "saas-14.2").
 PYTHON_VERSIONS: dict[str, str] = {
+    "11.0": "3.6",
+    "12.0": "3.6",
     "13.0": "3.8",
     "14.0": "3.8",
     "15.0": "3.8",
@@ -17,6 +19,7 @@ PRE_INSTALLS: list[tuple[str, list[list[str]]]] = []
 # Same structure as PRE_INSTALLS, but runs AFTER requirements.txt.
 POST_INSTALLS: list[tuple[str, list[list[str]]]] = [
     ("*", [["debugpy", "jwt"]]),
+    (">=18", [["paramiko"]]),  # Needed for be_payroll
 ]
 
 
