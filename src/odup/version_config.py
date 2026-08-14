@@ -8,6 +8,9 @@ PYTHON_VERSIONS: dict[str, str] = {
     "13.0": "3.8",
     "14.0": "3.8",
     "15.0": "3.8",
+    "16.0": "3.9",
+    "17.0": "3.10",
+    "18.0": "3.10",
 }
 
 # Ordered list of (version_selector, install_commands) to run BEFORE requirements.txt.
