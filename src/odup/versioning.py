@@ -47,6 +47,10 @@ def read_min_python_version(version: str) -> str:
 
 
 def _read_master_version_number() -> tuple[int, int]:
+    """
+    Read the version that represents the current master branch
+    Example: version_info = (19, 5, 0, ALPHA, 1, '')
+    """
     match = _read_release_py("master", r"version_info\s*=\s*\(\s*(\d+)\s*,\s*(\d+)\s*,")
     return int(match.group(1)), int(match.group(2))
 

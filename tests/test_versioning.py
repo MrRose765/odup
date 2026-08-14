@@ -34,16 +34,19 @@ class TestReadReleasePy:
             with pytest.raises(VersionDetectionError):
                 _read_master_version_number()
 
+    @patch("odup.versioning.PYTHON_VERSIONS", {})
     def test_read_min_python_version(self, tmp_path: Path) -> None:
         self._write(tmp_path, "17.0", "MIN_PY_VERSION = (3, 10)\n")
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             assert read_min_python_version("17.0") == "3.10"
 
+    @patch("odup.versioning.PYTHON_VERSIONS", {})
     def test_read_min_python_version__missing_file(self, tmp_path: Path) -> None:
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
             with pytest.raises(VersionDetectionError):
                 read_min_python_version("17.0")
 
+    @patch("odup.versioning.PYTHON_VERSIONS", {})
     def test_read_min_python_version__missing_pattern(self, tmp_path: Path) -> None:
         self._write(tmp_path, "17.0", "# no MIN_PY_VERSION here\n")
         with patch("odup.versioning.SRC_ROOT", tmp_path / "src"):
