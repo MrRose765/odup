@@ -24,13 +24,15 @@ The tool is built with **Typer** (CLI framework) and uses **psycopg2** for datab
 
 **Workflow Layer (`workflows.py`)**
 - High-level orchestration of multi-step operations
-- Four main workflows: `createdb`, `start`, `upgrade`, `env_pull`
+- Workflows: `createdb`, `upgrade`, `start`, `clean`, `env_add`, `env_rem`, `env_pull`
 - Returns `WorkflowOutcome` with exit code and optional error message
 - Handles test marker tracking via `ir_module_module.latest_version` queries
 - `env_pull_workflow` supports pulling upgrade repos alongside Odoo versions
 
 **Infrastructure Modules**
 - `environment.py`: Locates and validates Odoo installations (checks venv, odoo-bin, addon paths)
+- `sources.py`: Iterates source/upgrade repositories on disk and drives `env pull` rebases
+- `version_config.py`: Central config for source/upgrade repo names, per-version Python fallbacks, and pre/post pip installs
 - `versioning.py`: Parses version strings into normalized forms (master, saas-X.Y, X.0)
 - `database.py`: PostgreSQL operations (drop, clone, metadata markers)
 - `git.py`: Git operations (pull, stash, branch detection) used by `env pull`
@@ -92,6 +94,12 @@ uv run odup --help
 uv run odup createdb demo -v 17.0
 uv run odup upgrade odup_demo 18.0 --tests
 uv run odup start odup_demo --shell
+uv run odup clean                       # Drop odup-managed databases
+uv run odup clean --all                 # Drop all local databases
+
+# Manage per-version environments (venv + requirements)
+uv run odup env add 17.0
+uv run odup env rem 17.0
 
 # Pull source repositories
 uv run odup env pull                    # Pull all (odoo, enterprise, industry + upgrade repos)
@@ -153,17 +161,18 @@ src/odup/
 ├── cli.py              # Typer command definitions
 ├── workflows.py        # Workflow orchestration
 ├── environment.py      # Odoo path detection
+├── sources.py          # Repository iteration and env-pull driver
+├── version_config.py   # Repo lists + per-version Python and pip install config
 ├── versioning.py       # Version parsing and normalization
 ├── database.py         # PostgreSQL operations
-├── git.py      # Git wrapper
+├── git.py              # Git wrapper
 ├── error.py            # Exception classes
 └── utils.py            # Subprocess utilities
 
 tests/
-├── test_cli.py         # CLI argument handling
 ├── test_versioning.py  # Version parsing tests
 ├── test_environment.py # Environment discovery tests
-└── test_environment.py # Git operations tests
+└── test_sources.py     # Source repository iteration tests
 ```
 
 ## Code Style Guidelines
