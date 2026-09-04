@@ -52,12 +52,28 @@ def _log_environment_context(
         logger.debug("Using addons path: %s", addons_path)
 
 
+def _extend_addons_path(
+    addons_path: str | None, extra_modules: list[Path] | None
+) -> str | None:
+    if not extra_modules:
+        return addons_path
+    extras = []
+    for path in extra_modules:
+        if not path.exists():
+            logger.warning("Extra modules path does not exist: %s", path)
+        extras.append(str(path))
+    combined = [addons_path] if addons_path else []
+    combined.extend(extras)
+    return ",".join(combined)
+
+
 def createdb_workflow(
     db_name: str,
     version: str | None,
     init: str | None,
     debug: bool,
     extra_args: list[str] | None = None,
+    extra_modules: list[Path] | None = None,
 ) -> WorkflowOutcome:
     db_name = f"odup_{db_name}"
     logger.info("Creating Odoo database '%s' for version %s", db_name, version)
@@ -66,6 +82,7 @@ def createdb_workflow(
     normalized_version = normalize_version(version or "master")
     logger.debug("Normalized Odoo version: %s", normalized_version)
     venv_path, odoo_bin, addons_path = find_odoo_environment(normalized_version)
+    addons_path = _extend_addons_path(addons_path, extra_modules)
     _log_environment_context(venv_path, odoo_bin, addons_path)
 
     args = ["-d", db_name]
@@ -110,6 +127,7 @@ def upgrade_workflow(
     tests: bool,
     debug: bool,
     extra_args: list[str] | None = None,
+    extra_modules: list[Path] | None = None,
 ) -> WorkflowOutcome:
     normalized_target_version = normalize_version(target_version)
     source_version = infer_version(db_name)
@@ -133,6 +151,7 @@ def upgrade_workflow(
         venv_path, odoo_bin, addons_path = find_odoo_environment(
             step_version, add_industry=False
         )
+        addons_path = _extend_addons_path(addons_path, extra_modules)
         _log_environment_context(venv_path, odoo_bin, addons_path)
 
         if tests:
@@ -192,12 +211,17 @@ def upgrade_workflow(
 
 
 def start_workflow(
-    db_name: str, shell: bool, debug: bool, extra_args: list[str] | None = None
+    db_name: str,
+    shell: bool,
+    debug: bool,
+    extra_args: list[str] | None = None,
+    extra_modules: list[Path] | None = None,
 ) -> WorkflowOutcome:
     logger.info("Starting Odoo database '%s'", db_name)
 
     version = infer_version(db_name)
     venv_path, odoo_bin, addons_path = find_odoo_environment(version)
+    addons_path = _extend_addons_path(addons_path, extra_modules)
 
     logger.info("Inferred Odoo version: %s", version)
     _log_environment_context(venv_path, odoo_bin, addons_path)

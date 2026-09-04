@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
+
 import typer
 
 from .error import OdupError
@@ -157,6 +159,12 @@ def createdb(
         "--debug",
         help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
     ),
+    extra_modules: list[Path] | None = typer.Option(
+        None,
+        "--extra-modules",
+        envvar="ODUP_EXTRA_MODULES",
+        help="Extra addons directory to append to addons-path. Repeatable.",
+    ),
 ) -> None:
     """Create a fresh Odoo database for the requested version."""
     _run_workflow(
@@ -166,6 +174,7 @@ def createdb(
         version=version,
         init=init,
         debug=debug,
+        extra_modules=extra_modules,
     )
 
 
@@ -184,6 +193,12 @@ def upgrade(
         "--debug",
         help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
     ),
+    extra_modules: list[Path] | None = typer.Option(
+        None,
+        "--extra-modules",
+        envvar="ODUP_EXTRA_MODULES",
+        help="Extra addons directory to append to addons-path. Repeatable.",
+    ),
 ) -> None:
     """Clone and upgrade a database on a target Odoo version."""
     _run_workflow(
@@ -193,6 +208,7 @@ def upgrade(
         target_version=target_version,
         tests=tests,
         debug=debug,
+        extra_modules=extra_modules,
     )
 
 
@@ -210,6 +226,12 @@ def start(
         "--debug",
         help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
     ),
+    extra_modules: list[Path] | None = typer.Option(
+        None,
+        "--extra-modules",
+        envvar="ODUP_EXTRA_MODULES",
+        help="Extra addons directory to append to addons-path. Repeatable.",
+    ),
 ) -> None:
     """Start an existing Odoo database using its inferred version."""
     _run_workflow(
@@ -218,6 +240,7 @@ def start(
         db_name=db_name,
         shell=shell,
         debug=debug,
+        extra_modules=extra_modules,
     )
 
 
