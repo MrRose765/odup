@@ -17,7 +17,9 @@ PYTHON_VERSIONS: dict[str, str] = {
 # Each install_command is the full arg list for `uv pip install`.
 # Selectors: "*" | single comparison ">14" | compound ">14,<=18"
 # Comparison is done on the major version number (e.g. 18 for "saas-18.3").
-PRE_INSTALLS: list[tuple[str, list[list[str]]]] = []
+PRE_INSTALLS: list[tuple[str, list[list[str]]]] = [
+    ("<=13", [["setuptools<58", "wheel"], ["--no-build-isolation", "vatnumber==1.2"]])
+]
 
 # Same structure as PRE_INSTALLS, but runs AFTER requirements.txt.
 POST_INSTALLS: list[tuple[str, list[list[str]]]] = [
