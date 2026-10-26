@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import patch
 
 from odup.environment import _collect_installs, _version_matches
 
@@ -27,6 +28,19 @@ class TestVersionMatches:
         caplog.set_level(logging.WARNING)
         assert _version_matches("16.0", "bad-selector") is False
         assert "Invalid version selector condition" in caplog.text
+
+
+class TestVersionMatchesMaster:
+    def test_master_does_not_match_upper_bound(self) -> None:
+        with patch("odup.versioning._read_master_version_number", return_value=(20, 0)):
+            assert _version_matches("master", "<=13") is False
+
+    def test_master_matches_wildcard(self) -> None:
+        assert _version_matches("master", "*") is True
+
+    def test_master_matches_lower_bound(self) -> None:
+        with patch("odup.versioning._read_master_version_number", return_value=(20, 0)):
+            assert _version_matches("master", ">=18") is True
 
 
 class TestCollectInstalls:

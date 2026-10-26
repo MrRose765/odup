@@ -76,7 +76,12 @@ def parse_version(s: str) -> tuple[str, ...]:
 
     Handles Odoo-specific tokens: "saas" and "~" are stripped so that
     "saas-16.3" sorts between "16.0" and "17.0" as expected.
+
+    "master" is resolved to its actual major version via release.py.
     """
+    if "master" in (s or "").lower():
+        major, _ = _read_master_version_number()
+        s = f"{major}.0"
     parts: list[str] = []
     for part in __parse_version_parts((s or "0.1").lower()):
         if part.startswith("*"):
