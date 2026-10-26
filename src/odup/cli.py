@@ -59,7 +59,19 @@ class LevelColorFormatter(logging.Formatter):
 
 
 @app.callback()
-def _configure_logging() -> None:
+def _configure_logging(
+    ctx: typer.Context,
+    verbose: int = typer.Option(
+        0,
+        "-v",
+        "--verbose",
+        count=True,
+        help="Enable debug logging. Use -vv to also show git output in env pull.",
+    ),
+) -> None:
+    ctx.ensure_object(dict)
+    ctx.obj["verbosity"] = verbose
+
     use_colors = sys.stderr.isatty() and "NO_COLOR" not in os.environ
     formatter = LevelColorFormatter(
         fmt="%(asctime)s %(levelname)s ? [%(name)s]: %(message)s",
@@ -70,7 +82,7 @@ def _configure_logging() -> None:
     handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
 
@@ -253,16 +265,10 @@ def start(
 
 @env_app.command("pull")
 def env_pull(
+    ctx: typer.Context,
     target: str | None = typer.Argument(
         None,
         help="Optional version or upgrade repo to pull (e.g. 16.0, saas-16.3, master, upgrade-specific). If omitted, pulls every local checkout.",
-    ),
-    verbosity: int = typer.Option(
-        0,
-        "-v",
-        "--verbose",
-        count=True,
-        help="Use -v for debug logs and -vv to also show git command output.",
     ),
     upgrade_only: bool = typer.Option(
         False,
@@ -271,8 +277,7 @@ def env_pull(
     ),
 ) -> None:
     """Pull existing local Odoo source checkouts."""
-    if verbosity:
-        logging.getLogger().setLevel(logging.DEBUG)
+    verbosity = ctx.find_root().obj.get("verbosity", 0)
     _run_workflow(
         env_pull_workflow,
         target=target,

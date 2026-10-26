@@ -64,6 +64,7 @@ def _setup_venv(version: str, odoo_dir: Path) -> None:
     logger.debug("Minimum Python version from release.py: %s", python_version)
 
     venv_path = odoo_dir / ".venv"
+    logger.debug("Setting up virtual environment at %s", venv_path)
     if venv_path.exists():
         logger.info("Virtual environment already exists, skipping creation")
     else:
