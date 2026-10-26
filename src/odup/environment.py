@@ -71,19 +71,21 @@ def _setup_venv(version: str, odoo_dir: Path) -> None:
         logger.info("Creating virtual environment (Python %s)", python_version)
         run_uv(["venv", ".venv", "--python", python_version], cwd=odoo_dir)
 
+    python = ".venv/bin/python"
+
     for install_args in _collect_installs(PRE_INSTALLS, version):
         logger.info("Pre-installing %s", " ".join(install_args))
-        run_uv(["pip", "install", *install_args], cwd=odoo_dir)
+        run_uv(["pip", "install", "--python", python, *install_args], cwd=odoo_dir)
 
     logger.info("Installing requirements.txt")
     run_uv(
-        ["pip", "install", "-r", "requirements.txt", "--python", ".venv/bin/python"],
+        ["pip", "install", "-r", "requirements.txt", "--python", python],
         cwd=odoo_dir,
     )
 
     for install_args in _collect_installs(POST_INSTALLS, version):
         logger.info("Installing %s", " ".join(install_args))
-        run_uv(["pip", "install", *install_args], cwd=odoo_dir)
+        run_uv(["pip", "install", "--python", python, *install_args], cwd=odoo_dir)
 
 
 def add_version_environment(version: str) -> None:

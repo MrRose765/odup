@@ -23,8 +23,9 @@ PRE_INSTALLS: list[tuple[str, list[list[str]]]] = [
 
 # Same structure as PRE_INSTALLS, but runs AFTER requirements.txt.
 POST_INSTALLS: list[tuple[str, list[list[str]]]] = [
-    ("*", [["debugpy", "jwt"]]),
+    ("*", [["debugpy", "pyjwt"]]),
     (">=18", [["paramiko"]]),  # Needed for be_payroll
+    (">=saas-20.1", [["pyyaml", "jsonschema"]]),  # Needed for be_payroll
 ]
 
 
