@@ -15,8 +15,9 @@ PYTHON_VERSIONS: dict[str, str] = {
 
 # Ordered list of (version_selector, install_commands) to run BEFORE requirements.txt.
 # Each install_command is the full arg list for `uv pip install`.
-# Selectors: "*" | single comparison ">14" | compound ">14,<=18"
-# Comparison is done on the major version number (e.g. 18 for "saas-18.3").
+# Selectors: "*" | single comparison ">=14" | compound ">=14,<18"
+# Bounds are full version strings parsed by parse_version (e.g. "18", "18.0", "saas~18.3").
+# Use saas~ notation (never saas-) so the tilde is stripped cleanly by the parser.
 PRE_INSTALLS: list[tuple[str, list[list[str]]]] = [
     ("<=13", [["setuptools<58", "wheel"], ["--no-build-isolation", "vatnumber==1.2"]])
 ]
@@ -25,7 +26,7 @@ PRE_INSTALLS: list[tuple[str, list[list[str]]]] = [
 POST_INSTALLS: list[tuple[str, list[list[str]]]] = [
     ("*", [["debugpy", "pyjwt"]]),
     (">=18", [["paramiko"]]),  # Needed for be_payroll
-    (">=saas-20.1", [["pyyaml", "jsonschema"]]),  # Needed for be_payroll
+    (">=saas~20.1", [["pyyaml", "jsonschema"]]),  # Needed for be_payroll
 ]
 
 

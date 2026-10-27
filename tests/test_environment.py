@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from unittest.mock import patch
 
 from odup.environment import _collect_installs, _version_matches
+from odup.version_config import PRE_INSTALLS, POST_INSTALLS
 
 
 class TestVersionMatches:
@@ -28,6 +30,13 @@ class TestVersionMatches:
         caplog.set_level(logging.WARNING)
         assert _version_matches("16.0", "bad-selector") is False
         assert "Invalid version selector condition" in caplog.text
+
+    def test_saas_selector_bound(self) -> None:
+        # 20.0 is the major release *before* saas~20.1, so it must not match ">=saas~20.1"
+        assert _version_matches("20.0", ">=saas~20.1") is False
+        assert _version_matches("saas~20.1", ">=saas~20.1") is True
+        assert _version_matches("saas~20.2", ">=saas~20.1") is True
+        assert _version_matches("saas~19.3", ">=saas~20.1") is False
 
 
 class TestVersionMatchesMaster:
@@ -61,3 +70,12 @@ class TestCollectInstalls:
             (">=18.0", [["new-package"]]),
         ]
         assert _collect_installs(installs, "17.0") == [["debugpy"]]
+
+
+class TestVersionConfigSelectors:
+    def test_no_saas_dash_in_selectors(self) -> None:
+        # Selectors must use saas~ (Odoo/upgrade-util form), never saas-,
+        # because parse_version treats "-" as a "final-" token which corrupts ordering.
+        all_selectors = [sel for sel, _ in PRE_INSTALLS + POST_INSTALLS]
+        bad = [s for s in all_selectors if re.search(r"saas-", s)]
+        assert not bad, f"Use saas~ not saas- in selectors: {bad}"
