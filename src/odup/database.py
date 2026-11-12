@@ -62,6 +62,18 @@ def clone_database_from_template(dbname: str, template_db: str) -> None:
         ) from exc
 
 
+def is_module_installed(dbname: str, module: str) -> bool:
+    try:
+        with _pg_cursor(dbname=dbname) as curr:
+            curr.execute("SELECT state FROM ir_module_module WHERE name=%s", (module,))
+            result = curr.fetchone()
+            return bool(result) and result[0] == "installed"
+    except psycopg2.Error as exc:
+        raise DatabaseOperationError(
+            f"Could not query module '{module}' state on '{dbname}': {exc}"
+        ) from exc
+
+
 def query_version(dbname: str) -> str:
     try:
         with _pg_cursor(dbname=dbname) as curr:

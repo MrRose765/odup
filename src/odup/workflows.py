@@ -8,6 +8,7 @@ from pathlib import Path
 from .database import (
     clone_database_from_template,
     drop_if_exists,
+    is_module_installed,
     list_databases,
 )
 from .environment import (
@@ -15,12 +16,14 @@ from .environment import (
     find_odoo_environment,
     remove_version_environment,
 )
+from .error import OdupError
 from .sources import pull_existing_sources
 from .utils import run_odoo_command, SRC_ROOT
 from .versioning import (
     build_upgrade_chain,
     infer_version,
     normalize_version,
+    parse_version,
 )
 
 PREPARE_TESTS_TAG = "upgrade.test_prepare"
@@ -207,6 +210,70 @@ def upgrade_workflow(
                 )
 
     logger.info("Successfully upgraded database '%s'", upgraded_db_name)
+    return WorkflowOutcome()
+
+
+def populate_workflow(
+    db_name: str,
+    blueprint: str,
+    scale: str,
+    seed: int | None,
+    jobs: str,
+    debug: bool,
+    extra_args: list[str] | None = None,
+    extra_modules: list[Path] | None = None,
+) -> WorkflowOutcome:
+    version = infer_version(db_name)
+    if parse_version(version) < parse_version("20.0"):
+        raise OdupError(
+            f"`odup populate` requires an Odoo database on 20.0 or later "
+            f"(the blueprint-based populate addon landed in 20.0). "
+            f"Database '{db_name}' is on {version}."
+        )
+
+    venv_path, odoo_bin, addons_path = find_odoo_environment(version)
+    addons_path = _extend_addons_path(addons_path, extra_modules)
+    _log_environment_context(venv_path, odoo_bin, addons_path)
+
+    if not is_module_installed(db_name, "populate"):
+        logger.info("Installing 'populate' module on '%s'", db_name)
+        install_code = run_odoo_command(
+            venv_path,
+            odoo_bin,
+            ["-d", db_name, "-i", "populate", "--stop-after-init"],
+            addons_path,
+        )
+        if install_code != 0:
+            return WorkflowOutcome(
+                exit_code=install_code,
+                error_message=f"Failed to install 'populate' on '{db_name}' (exit code: {install_code})",
+            )
+
+    logger.info(
+        "Populating '%s' with blueprint '%s' (scale=%s)", db_name, blueprint, scale
+    )
+    args = [
+        "populate",
+        "-d",
+        db_name,
+        "-b",
+        blueprint,
+        "--scale",
+        scale,
+        "-j",
+        jobs,
+    ]
+    if seed is not None:
+        args.extend(["--seed", str(seed)])
+    if extra_args:
+        args.extend(extra_args)
+
+    exit_code = run_odoo_command(venv_path, odoo_bin, args, addons_path, debug=debug)
+    if exit_code != 0:
+        return WorkflowOutcome(
+            exit_code=exit_code,
+            error_message=f"Populate failed on '{db_name}' (exit code: {exit_code})",
+        )
     return WorkflowOutcome()
 
 

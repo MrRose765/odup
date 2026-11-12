@@ -14,6 +14,7 @@ from .workflows import (
     env_add_workflow,
     env_pull_workflow,
     env_rem_workflow,
+    populate_workflow,
     start_workflow,
     upgrade_workflow,
 )
@@ -219,6 +220,60 @@ def upgrade(
         db_name=db_name,
         target_version=target_version,
         tests=tests,
+        debug=debug,
+        extra_modules=extra_modules,
+    )
+
+
+@app.command(context_settings=ODOO_COMMAND_CONTEXT)
+def populate(
+    ctx: typer.Context,
+    db_name: str = typer.Argument(
+        ..., help="Odoo database to populate (must be 20.0+)."
+    ),
+    blueprint: str = typer.Option(
+        ...,
+        "-b",
+        "--blueprint",
+        help="Blueprint xmlid or name to execute.",
+    ),
+    scale: str = typer.Option(
+        "1",
+        "--scale",
+        help="Factor to scale the blueprint counts by.",
+    ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help="Seed for the random number generator.",
+    ),
+    jobs: str = typer.Option(
+        "1",
+        "-j",
+        "--jobs",
+        help="Number of parallel workers (int or 'auto').",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Run odoo-bin with debugpy and wait for debugger attach on localhost:5678.",
+    ),
+    extra_modules: list[Path] | None = typer.Option(
+        None,
+        "--extra-modules",
+        envvar="ODUP_EXTRA_MODULES",
+        help="Extra addons directory to append to addons-path. Repeatable.",
+    ),
+) -> None:
+    """Populate an existing Odoo database using a blueprint (20.0+ only)."""
+    _run_workflow(
+        populate_workflow,
+        extra_args=list(ctx.args),
+        db_name=db_name,
+        blueprint=blueprint,
+        scale=scale,
+        seed=seed,
+        jobs=jobs,
         debug=debug,
         extra_modules=extra_modules,
     )
