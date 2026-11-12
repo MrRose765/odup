@@ -26,6 +26,7 @@ PRE_INSTALLS: list[tuple[str, list[list[str]]]] = [
 POST_INSTALLS: list[tuple[str, list[list[str]]]] = [
     ("*", [["debugpy", "pyjwt"]]),
     (">=18", [["paramiko"]]),  # Needed for be_payroll
+    (">=saas~19.2", [["markdown2"]]),  # silence warnings with AI :/
     (">=saas~20.1", [["pyyaml", "jsonschema"]]),  # Needed for be_payroll
 ]
 
