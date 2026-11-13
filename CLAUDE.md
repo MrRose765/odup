@@ -153,6 +153,34 @@ Unexpected exceptions bubble up so Typer renders them with rich tracebacks.
 - Use module-level loggers: `logger = logging.getLogger(__name__)`
 - Log level: INFO by default. DEBUG when relevent
 
+### Populate & Benchmarks
+
+`odup populate` runs the `populate` CLI (20.0+) against a database.
+
+- Auto-installs the `populate` module if missing.
+- If `-b` is a fully qualified xmlid (`module.xmlid`), auto-installs the owning
+  module too. If `populate` was already installed, follows up with `-u populate`
+  so the new blueprint is loaded.
+- Always adds `~/src/upgrade/benchmarks/` to the addons path. Each child
+  directory is treated as a module by Odoo, so it must contain **both**
+  `__init__.py` (can be empty) and `__manifest__.py` — otherwise Odoo logs
+  `invalid addons directory ... skipped` and the benchmark is invisible.
+
+Benchmark module convention (consumed by the `/populate-bench` skill):
+
+```
+~/src/upgrade/benchmarks/bench_<src_module>_<target>_<slug>/
+├── __init__.py           # empty
+├── __manifest__.py       # name = folder name, depends on source-version modules
+└── populate/
+    └── blueprint.xml     # <record id="main" model="populate.blueprint">
+```
+
+- Folder name = module tech name = globally unique (prefix `bench_`).
+- Target version lives in manifest `version` (dots aren't legal in folder
+  names, so encode as `20_1` in the folder and `20.1.1.0.0` in the manifest).
+- Full blueprint xmlid passed to `-b` is `<module_name>.main`.
+
 
 ## File Structure
 

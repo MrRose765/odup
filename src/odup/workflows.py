@@ -232,21 +232,55 @@ def populate_workflow(
         )
 
     venv_path, odoo_bin, addons_path = find_odoo_environment(version)
-    addons_path = _extend_addons_path(addons_path, extra_modules)
+    benchmarks_path = SRC_ROOT / "upgrade" / "benchmarks"
+    addons_path = _extend_addons_path(
+        addons_path, [benchmarks_path, *(extra_modules or [])]
+    )
     _log_environment_context(venv_path, odoo_bin, addons_path)
 
+    modules_to_install = []
     if not is_module_installed(db_name, "populate"):
-        logger.info("Installing 'populate' module on '%s'", db_name)
+        modules_to_install.append("populate")
+
+    upgrade_populate = False
+    if "." in blueprint:
+        blueprint_module = blueprint.split(".", 1)[0]
+        if blueprint_module != "populate" and not is_module_installed(
+            db_name, blueprint_module
+        ):
+            modules_to_install.append(blueprint_module)
+            # Blueprints from other modules are picked up by re-running the
+            # `populate` module's loading, so upgrade it after the install.
+            upgrade_populate = "populate" not in modules_to_install
+
+    if modules_to_install:
+        logger.info(
+            "Installing module(s) %s on '%s'", ", ".join(modules_to_install), db_name
+        )
         install_code = run_odoo_command(
             venv_path,
             odoo_bin,
-            ["-d", db_name, "-i", "populate", "--stop-after-init"],
+            ["-d", db_name, "-i", ",".join(modules_to_install), "--stop-after-init"],
             addons_path,
         )
         if install_code != 0:
             return WorkflowOutcome(
                 exit_code=install_code,
-                error_message=f"Failed to install 'populate' on '{db_name}' (exit code: {install_code})",
+                error_message=f"Failed to install {modules_to_install} on '{db_name}' (exit code: {install_code})",
+            )
+
+    if upgrade_populate:
+        logger.info("Upgrading 'populate' on '%s' to load new blueprints", db_name)
+        upgrade_code = run_odoo_command(
+            venv_path,
+            odoo_bin,
+            ["-d", db_name, "-u", "populate", "--stop-after-init"],
+            addons_path,
+        )
+        if upgrade_code != 0:
+            return WorkflowOutcome(
+                exit_code=upgrade_code,
+                error_message=f"Failed to upgrade 'populate' on '{db_name}' (exit code: {upgrade_code})",
             )
 
     logger.info(
