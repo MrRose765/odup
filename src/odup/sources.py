@@ -27,38 +27,40 @@ def _iter_worktrees(root: Path, version: str | None) -> Iterator[Path]:
         yield entry
 
 
-def _rebase_worktree(git: GitManager, repository: Path, failures: list[str]) -> None:
-    branch = git.current_branch(repository)
+def _rebase_worktree(git: GitManager, worktree: Path, failures: list[str]) -> None:
+    branch = git.current_branch(worktree)
 
     if branch == "HEAD":
         failures.append(
             _format_pull_failure(
-                repository,
+                worktree,
                 "detached HEAD; switch to a branch with an upstream before pulling",
             )
         )
         return
 
-    if not git.has_upstream(repository):
+    if not git.has_upstream(worktree):
         failures.append(
             _format_pull_failure(
-                repository, f"branch '{branch}' has no upstream configured"
+                worktree, f"branch '{branch}' has no upstream configured"
             )
         )
         return
 
-    if repository.name in UPGRADE_REPOSITORIES and branch != "master":
+    expected = "master" if worktree.name in UPGRADE_REPOSITORIES else worktree.name
+    if branch != expected:
         logger.warning(
-            "%s is on branch '%s', not master; upgrade scripts may be out of date",
-            repository.name,
+            "%s is on branch '%s'. Rebase onto '%s' to pull the latest commits onto that branch.",
+            worktree,
             branch,
+            expected,
         )
 
     try:
-        git.rebase(repository)
-        logger.info("Updated %s", repository)
+        git.rebase(worktree)
+        logger.info("Updated %s", worktree)
     except RuntimeError as exc:
-        failures.append(_format_pull_failure(repository, str(exc)))
+        failures.append(_format_pull_failure(worktree, str(exc)))
 
 
 def pull_existing_sources(

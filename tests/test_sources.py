@@ -93,6 +93,9 @@ class TestPullExistingSources:
             def current_branch(self, cwd: Path) -> str:
                 return "HEAD" if cwd == repository else "16.0"
 
+            def has_upstream(self, cwd: Path) -> bool:
+                return cwd != repository
+
         with (
             patch("odup.sources.SRC_ROOT", tmp_path / "src"),
             patch(
@@ -104,7 +107,7 @@ class TestPullExistingSources:
 
         assert len(failures) == 1
         assert failures[0].startswith(
-            "pull odoo/16.0 has failed: detached HEAD; switch to a branch with an upstream before pulling"
+            "pull odoo/16.0 has failed: detached HEAD; check out a branch with an upstream before pulling"
         )
 
     def test_pull_fails_when_no_upstream(self, tmp_path: Path) -> None:
@@ -144,5 +147,5 @@ class TestPullExistingSources:
             failures = sources.pull_existing_sources()
 
         assert not failures
-        assert "not master" in caplog.text
+        assert "Rebase onto 'master'" in caplog.text
         assert len(git_instance.commands) == 1
