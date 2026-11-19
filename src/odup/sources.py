@@ -30,21 +30,13 @@ def _iter_worktrees(root: Path, version: str | None) -> Iterator[Path]:
 def _rebase_worktree(git: GitManager, worktree: Path, failures: list[str]) -> None:
     branch = git.current_branch(worktree)
 
-    if branch == "HEAD":
-        failures.append(
-            _format_pull_failure(
-                worktree,
-                "detached HEAD; switch to a branch with an upstream before pulling",
-            )
-        )
-        return
-
     if not git.has_upstream(worktree):
-        failures.append(
-            _format_pull_failure(
-                worktree, f"branch '{branch}' has no upstream configured"
-            )
+        reason = (
+            "detached HEAD; check out a branch with an upstream before pulling"
+            if branch == "HEAD"
+            else f"branch '{branch}' has no upstream configured"
         )
+        failures.append(_format_pull_failure(worktree, reason))
         return
 
     expected = "master" if worktree.name in UPGRADE_REPOSITORIES else worktree.name
